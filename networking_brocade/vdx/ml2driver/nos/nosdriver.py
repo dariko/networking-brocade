@@ -79,7 +79,9 @@ class NOSdriver(object):
         try:
             self.mgr = manager.connect(host=host, port=SSH_PORT,
                                        username=username, password=password,
-                                       unknown_host_cb=nos_unknown_host_cb)
+                                       unknown_host_cb=nos_unknown_host_cb,
+                                       hostkey_verify=False,
+                                       look_for_keys=False)
 
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -196,6 +198,30 @@ class NOSdriver(object):
         """Deletes a VLAN interface."""
 
         confstr = template.DELETE_VLAN_INTERFACE.format(vlan_id=vlan_id)
+        mgr.edit_config(target='running', config=confstr)
+
+    def add_ip_address_to_vlan_interface(self, mgr, rbridge_id, vlan_id, ip_address):
+        """Deletes a VLAN interface."""
+
+        confstr = template.ADD_IP_ADDRESS_TO_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id, ip_address=ip_address)
+        mgr.edit_config(target='running', config=confstr)
+
+    def add_anycast_ip_address_to_vlan_interface(self, mgr, rbridge_id, vlan_id, ip_address):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_ANYCAST_IP_ADDRESS_TO_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id, ip_address=ip_address)
+        mgr.edit_config(target='running', config=confstr)
+
+    def add_arp_learn_any_to_vlan_interface(self, mgr, rbridge_id, vlan_id):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_ARP_LEARN_ANY_TO_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id)
+        mgr.edit_config(target='running', config=confstr)
+
+    def set_arp_aging_timeout_for_vlan_interface(self, mgr, rbridge_id, vlan_id, arp_aging_timeout):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.SET_ARP_AGING_TIMEOUT_FOR_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id, arp_aging_timeout=arp_aging_timeout)
         mgr.edit_config(target='running', config=confstr)
 
     def get_port_profiles(self, mgr):
@@ -433,6 +459,14 @@ class NOSdriver(object):
                                                        rd=rd)
         mgr.edit_config(target='running', config=confstr)
 
+    def configure_vni_for_vrf(self, mgr, rbridge_id, vrf_name, vni):
+        """configure vni on vrf  on rbridge."""
+
+        confstr = template.CONFIGURE_NVI_FOR_VRF.format(rbridge_id=rbridge_id,
+                                                       vrf_name=vrf_name,
+                                                       vni=vni)
+        mgr.edit_config(target='running', config=confstr)
+
     def configure_address_family_for_vrf_v1(self, mgr, rbridge_id, vrf_name):
         """configure ipv4 address family to vrf  on rbridge."""
 
@@ -446,6 +480,33 @@ class NOSdriver(object):
 
         confstr = template.ADD_ADDRESS_FAMILY_FOR_VRF.format(
             rbridge_id=rbridge_id, vrf_name=vrf_name)
+        mgr.edit_config(target='running', config=confstr)
+
+    def add_vrf_to_bgp(self, mgr, rbridge_id, vrf_name):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_VRF_TO_BGP.format(rbridge_id=rbridge_id, vrf_name=vrf_name)
+        mgr.edit_config(target='running', config=confstr)
+
+    def add_multipath_ebgp_to_bgp_for_vrf(self, mgr, rbridge_id, vrf_name):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_MULTIPATH_EBGP_TO_BGP_FOR_VRF.format(rbridge_id=rbridge_id, vrf_name=vrf_name)
+        mgr.edit_config(target='running', config=confstr)
+        #mgr.exec_command("show interface vlan 1102")
+
+    def add_address_family_import_targets_for_vrf(self, mgr, rbridge_id, vrf_name, vni):
+        """configure ipv4 address family to vrf  on rbridge."""
+
+        confstr = template.ADD_ADDRESS_FAMILY_IMPORT_TARGET_FOR_VRF.format(
+            rbridge_id=rbridge_id, vrf_name=vrf_name, vni=vni)
+        mgr.edit_config(target='running', config=confstr)
+
+    def add_address_family_export_targets_for_vrf(self, mgr, rbridge_id, vrf_name, vni):
+        """configure ipv4 address family to vrf  on rbridge."""
+
+        confstr = template.ADD_ADDRESS_FAMILY_EXPORT_TARGET_FOR_VRF.format(
+            rbridge_id=rbridge_id, vrf_name=vrf_name, vni=vni)
         mgr.edit_config(target='running', config=confstr)
 
     def configure_svi_with_ip_address(self, mgr, rbridge_id,

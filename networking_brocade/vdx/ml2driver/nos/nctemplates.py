@@ -261,6 +261,139 @@ CONFIGURE_SVI_WITH_IP_ADDRESS = """
     </config>
 """
 
+# Add ipaddress to SVI (rbridge_id,vlan_id,ip_address)
+ADD_IP_ADDRESS_TO_SVI = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <interface xmlns="urn:brocade.com:mgmt:brocade-interface">
+                <ve>
+                    <name>{vlan_id}</name>
+                    <ip xmlns="urn:brocade.com:mgmt:brocade-ip-config">
+                        <ip-config>
+                          <address>
+                             <address>{ip_address}</address>
+                          </address>
+                        </ip-config>
+                    </ip>
+                </ve>
+            </interface>
+         </rbridge-id>
+    </config>
+"""
+
+# Add anycast ipaddress to SVI (rbridge_id,vlan_id,ip_address)
+ADD_ANYCAST_IP_ADDRESS_TO_SVI = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <interface xmlns="urn:brocade.com:mgmt:brocade-interface">
+                <ve>
+                    <name>{vlan_id}</name>
+                    <ip xmlns="urn:brocade.com:mgmt:brocade-ip-config">
+                        <ip-anycast-address xmlns="urn:brocade.com:mgmt:brocade-vrrp">
+                            <ip-address>{ip_address}</ip-address>
+                        </ip-anycast-address>
+                    </ip>
+                </ve>
+            </interface>
+         </rbridge-id>
+    </config>
+"""
+
+# set learn-any for SVI (rbridge_id,vlan_id)
+ADD_ARP_LEARN_ANY_TO_SVI = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <interface xmlns="urn:brocade.com:mgmt:brocade-interface">
+                <ve>
+                    <name>{vlan_id}</name>
+                    <ip xmlns="urn:brocade.com:mgmt:brocade-ip-config">
+                        <ip-config xmlns="urn:brocade.com:mgmt:brocade-ip-config">
+                            <arp>
+                                <learn-any></learn-any>
+                            </arp>
+                        </ip-config>
+                    </ip>
+                </ve>
+            </interface>
+         </rbridge-id>
+    </config>
+"""
+
+# set arp aging timeout for SVI (rbridge_id,vlan_id,arp_aging_timeout)
+SET_ARP_AGING_TIMEOUT_FOR_SVI = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <interface xmlns="urn:brocade.com:mgmt:brocade-interface">
+                <ve>
+                    <name>{vlan_id}</name>
+                    <ip xmlns="urn:brocade.com:mgmt:brocade-ip-config">
+                        <ip-config>
+                            <arp-aging-timeout>{arp_aging_timeout}</arp-aging-timeout>
+                        </ip-config>
+                    </ip>
+                </ve>
+            </interface>
+         </rbridge-id>
+    </config>
+"""
+
+# add vrf to bgp (rbridge_id, vrf_name)
+# router bgp
+#   address-family ipv4 unicast vrf {vrf_name}
+ADD_VRF_TO_BGP = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <router>
+                <router-bgp xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                    <address-family>
+                        <ipv4>
+                            <ipv4-unicast>
+                                <af-vrf>
+                                    <af-vrf-name>{vrf_name}</af-vrf-name>
+                                </af-vrf>
+                            </ipv4-unicast>
+                        </ipv4>
+                    </address-family>
+                </router-bgp>
+            </router>
+        </rbridge-id>
+    </config>
+"""
+
+# router bgp
+#   address-family ipv4 unicast vrf {vrf_name}
+#     multipath ebgp
+ADD_MULTIPATH_EBGP_TO_BGP_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <router>
+                <router-bgp xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                    <address-family>
+                        <ipv4>
+                            <ipv4-unicast>
+                                <af-vrf>
+                                    <af-vrf-name>{vrf_name}</af-vrf-name>
+                                    <af-common-cmds-holder>
+                                        <multipath>
+                                            <ebgp></ebgp>
+                                        </multipath>
+                                    </af-common-cmds-holder>
+                                </af-vrf>
+                            </ipv4-unicast>
+                        </ipv4>
+                    </address-family>
+                </router-bgp>
+            </router>
+        </rbridge-id>
+    </config>
+"""
+
 # delete SVI (rbridge_id,vlan_id)
 DELETE_SVI = """
     <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -351,6 +484,20 @@ CONFIGURE_RD_FOR_VRF = """
     </config>
 """
 
+# configure vni for vrf (rbridge_id, vrf_name, vni)
+CONFIGURE_NVI_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <vrf xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                <vrf-name>{vrf_name}</vrf-name>
+                <vni>{vni}</vni>
+            </vrf>
+         </rbridge-id>
+    </config>
+"""
+
+
 # configure address-family for vrf (rbridge_id,vrf_name)
 ADD_ADDRESS_FAMILY_FOR_VRF_V1 = """
     <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -378,6 +525,48 @@ ADD_ADDRESS_FAMILY_FOR_VRF = """
                 <address-family xmlns="urn:brocade.com:mgmt:brocade-vrf">
                     <ip>
                         <unicast/>
+                    </ip>
+                </address-family>
+            </vrf>
+         </rbridge-id>
+    </config>
+"""
+
+# configure address-family for vrf with targets (rbridge_id,vrf_name, vni, import_vni)
+ADD_ADDRESS_FAMILY_IMPORT_TARGET_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <vrf xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                <vrf-name>{vrf_name}</vrf-name>
+                <address-family xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                    <ip>
+                        <unicast>
+                            <route-target>
+                                <action>import</action>
+                                <target-community>{vni}:{vni}</target-community>
+                            </route-target>
+                          </unicast>
+                    </ip>
+                </address-family>
+            </vrf>
+         </rbridge-id>
+    </config>
+"""
+ADD_ADDRESS_FAMILY_EXPORT_TARGET_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <vrf xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                <vrf-name>{vrf_name}</vrf-name>
+                <address-family xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                    <ip>
+                        <unicast>
+                            <route-target>
+                                <action>export</action>
+                                <target-community>{vni}:{vni}</target-community>
+                            </route-target>
+                          </unicast>
                     </ip>
                 </address-family>
             </vrf>
