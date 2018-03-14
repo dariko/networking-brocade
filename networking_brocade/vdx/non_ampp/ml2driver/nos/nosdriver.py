@@ -32,7 +32,7 @@ from networking_brocade._i18n import _LW
 from networking_brocade.vdx.non_ampp.ml2driver import utils
 from networking_brocade.vdx.non_ampp.ml2driver.nos import(
     nctemplates as template)
-from neutron.common import exceptions
+from neutron_lib import exceptions
 from oslo_log import log as logging
 from oslo_utils import excutils
 import six
@@ -107,6 +107,7 @@ class NOSdriver(object):
     @retry(RetryableException)
     def _edit_config(self, target, config, timeout=30):
         """Modify switch config for a target config type."""
+        #LOG.debug("AAA: %s" % config.replace('\n',' '))
         try:
             mgr = self.connect(self.host, self.username, self.password)
             if timeout != 30:
@@ -485,12 +486,12 @@ class NOSdriver(object):
                         _LE("Failed to create static route %s"), str(e))
 
     def bind_vrf_to_svi(self, rbridge_id,
-                        vlan_id, router_id):
+                        vlan_id, vrf_name):
         """binds vrf on svi"""
         if not utils.is_vrf_required():
             return
-        vrf_name = template.OS_VRF_NAME.format(id=router_id)
-        vrf_name = vrf_name[:32]
+        #vrf_name = template.OS_VRF_NAME.format(id=router_id)
+        #vrf_name = vrf_name[:32]
         try:
             self.add_vrf_to_svi(rbridge_id, vlan_id, vrf_name)
         except Exception:
@@ -621,6 +622,42 @@ class NOSdriver(object):
                                                        rd=rd)
         self._edit_config('running', confstr)
 
+    def configure_vni_for_vrf(self, rbridge_id, vrf_name, vni):
+        """configure vni on vrf  on rbridge."""
+
+        confstr = template.CONFIGURE_NVI_FOR_VRF.format(rbridge_id=rbridge_id,
+                                                       vrf_name=vrf_name,
+                                                       vni=vni)
+        self._edit_config('running', confstr)
+
+    def add_address_family_import_targets_for_vrf(self, rbridge_id, vrf_name, vni):
+        """configure ipv4 address family to vrf  on rbridge."""
+
+        confstr = template.ADD_ADDRESS_FAMILY_TARGET_FOR_VRF.format(
+            rbridge_id=rbridge_id, vrf_name=vrf_name,
+            vni=vni,direction="import")
+        self._edit_config(target='running', config=confstr)
+
+    def add_address_family_export_targets_for_vrf(self, rbridge_id, vrf_name, vni):
+        """configure ipv4 address family to vrf  on rbridge."""
+
+        confstr = template.ADD_ADDRESS_FAMILY_TARGET_FOR_VRF.format(
+            rbridge_id=rbridge_id, vrf_name=vrf_name,
+            vni=vni,direction="export")
+        self._edit_config(target='running', config=confstr)
+
+    def add_arp_learn_any_to_vlan_interface(self, rbridge_id, vlan_id):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_ARP_LEARN_ANY_TO_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id)
+        self._edit_config(target='running', config=confstr)
+
+    def set_arp_aging_timeout_for_vlan_interface(self, rbridge_id, vlan_id, arp_aging_timeout):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.SET_ARP_AGING_TIMEOUT_FOR_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id, arp_aging_timeout=arp_aging_timeout)
+        self._edit_config(target='running', config=confstr)
+    
     def configure_address_family_for_vrf_v1(self, rbridge_id, vrf_name):
         """configure ipv4 address family to vrf  on rbridge."""
         confstr = template.ADD_ADDRESS_FAMILY_FOR_VRF_V1.format(
@@ -644,6 +681,15 @@ class NOSdriver(object):
             rbridge_id=rbridge_id, vlan_id=vlan_id,
             ip_address=ip_address)
         self._edit_config('running', confstr)
+
+    def configure_svi_with_ip_address_anycast(self, rbridge_id, vlan_id, ip_address):
+        """configure SVI with anycast ip address on rbridge."""
+        confstr = template.CONFIGURE_SVI_WITH_IP_ADDRESS_ANYCAST.format(
+            rbridge_id=rbridge_id,
+            vlan_id=vlan_id,
+            ip_address=ip_address)
+
+        self._edit_config(target='running', config=confstr)
 
     def activate_svi(self, rbridge_id, vlan_id):
         """configure SVI with ip address on rbridge."""

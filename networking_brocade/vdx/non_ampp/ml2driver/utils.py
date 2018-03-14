@@ -40,8 +40,13 @@ DEFAULT_TOPOLOGY = []
 DEFAULT_MTU = []
 DEFAULT_NATIVE_VLAN = []
 DEFAULT_RBRIDGE_RANGE = []
-ML2_BROCADE = [cfg.StrOpt('address', default='',
-                          help=_('The address of the host to SSH to')),
+VCS_OPTS = [cfg.MultiStrOpt('port', default=''),
+            cfg.StrOpt('address', default='')]
+ML2_BROCADE = [cfg.ListOpt('vcs', default='',
+                          help=_(
+                            'The name of the vcs cluster, to be'
+                            'configured in vcs_[name] section')),
+               cfg.StrOpt('additional_export_vrf', default=''),
                cfg.StrOpt('username', default='admin',
                           help=_('The SSH username to use')),
                cfg.StrOpt('password', default='password', secret=True,
@@ -128,7 +133,8 @@ FWAAS = [cfg.StrOpt('seq_ids', default='1:50000',
 
 def register_brocade_credentials():
     cfg.CONF.register_opts(ML2_BROCADE, "ml2_brocade")
-
+    for vcs in cfg.CONF.ml2_brocade.vcs:
+        cfg.CONF.register_opts(VCS_OPTS, "vcs_%s" % vcs)
 
 def reigister_brocade_topology():
     cfg.CONF.register_opts(TOPOLOGY_OPTS, "TOPOLOGY")
@@ -152,6 +158,9 @@ def get_brocade_fwaas_config():
              }
     return fwaas
 
+def get_additional_export_vrf():
+    register_brocade_credentials()
+    return cfg.CONF.ml2_brocade.additional_export_vrf
 
 def get_acl_files():
     fwaas = get_brocade_fwaas_config()
@@ -160,13 +169,20 @@ def get_acl_files():
 
 def get_brocade_credentials():
     register_brocade_credentials()
-    switch = {'address': cfg.CONF.ml2_brocade.address,
-              'username': cfg.CONF.ml2_brocade.username,
+    switch = {'username': cfg.CONF.ml2_brocade.username,
               'password': cfg.CONF.ml2_brocade.password,
               'os': cfg.CONF.ml2_brocade.ostype,
               'osversion': '5.0.0'}
     return switch
 
+def get_user_pw():
+    register_brocade_credentials()
+    return cfg.CONF.ml2_brocade.username, cfg.CONF.ml2_brocade.password
+
+def get_switches():
+    register_brocade_credentials()
+    
+    return {vcs: cfg.CONF.get("vcs_%s" % vcs) for vcs in cfg.CONF.ml2_brocade.vcs}
 
 def get_lacp_args():
     register_brocade_credentials()

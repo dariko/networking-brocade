@@ -22,12 +22,11 @@
 """Brocade specific database schema/model."""
 import sqlalchemy as sa
 
-from neutron.db import model_base
+from neutron_lib.db import model_base
 from neutron.db import models_v2
 
-
-class ML2_BrocadeNetwork(model_base.BASEV2, models_v2.HasId,
-                         models_v2.HasTenant):
+class ML2_BrocadeNetwork(model_base.BASEV2, model_base.HasId,
+                         model_base.HasProject):
 
     """Schema for brocade network."""
 
@@ -36,8 +35,8 @@ class ML2_BrocadeNetwork(model_base.BASEV2, models_v2.HasId,
     network_type = sa.Column(sa.String(10))
 
 
-class ML2_BrocadePort(model_base.BASEV2, models_v2.HasId,
-                      models_v2.HasTenant):
+class ML2_BrocadePort(model_base.BASEV2, model_base.HasId,
+                      model_base.HasProject):
 
     """Schema for brocade port."""
 
@@ -50,8 +49,8 @@ class ML2_BrocadePort(model_base.BASEV2, models_v2.HasId,
     host = sa.Column(sa.String(255))
 
 
-class ML2_BrocadeSvi(model_base.BASEV2, models_v2.HasId,
-                     models_v2.HasTenant):
+class ML2_BrocadeSvi(model_base.BASEV2, model_base.HasId,
+                     model_base.HasProject):
 
     """schema for brocade svi """
     svi_id = sa.Column(sa.String(36), primary_key=True)
@@ -60,14 +59,14 @@ class ML2_BrocadeSvi(model_base.BASEV2, models_v2.HasId,
     subnet_mask = sa.Column(sa.String(36))
 
 
-def create_svi(context, router_id, tenant_id, svi,
+def create_svi(context, router_id, project_id, svi,
                admin_state_up, ip_address, net_mask):
     """create svi port """
     session = context.session
     with session.begin(subtransactions=True):
-        ve = get_svi(context, router_id, tenant_id, svi, ip_address, net_mask)
+        ve = get_svi(context, router_id, project_id, svi, ip_address, net_mask)
         if not ve:
-            svi = ML2_BrocadeSvi(id=router_id, tenant_id=tenant_id,
+            svi = ML2_BrocadeSvi(id=router_id, project_id=project_id,
                                  svi_id=svi, admin_state_up=admin_state_up,
                                  ip_address=ip_address,
                                  subnet_mask=net_mask)
@@ -75,42 +74,42 @@ def create_svi(context, router_id, tenant_id, svi,
     return svi
 
 
-def delete_svi(context, router_id, tenant_id, svi, ip_address, net_mask):
+def delete_svi(context, router_id, project_id, svi, ip_address, net_mask):
     """Delete a brocade specific network/port-profiles."""
 
     session = context.session
     with session.begin(subtransactions=True):
-        svi = get_svi(context, router_id, tenant_id, svi, ip_address, net_mask)
+        svi = get_svi(context, router_id, project_id, svi, ip_address, net_mask)
         if svi:
             session.delete(svi)
 
 
-def get_svi(context, router_id, tenant_id, svi, ip_address, net_mask):
+def get_svi(context, router_id, project_id, svi, ip_address, net_mask):
     session = context.session
     return session.query(ML2_BrocadeSvi).filter_by(id=router_id,
-                                                   tenant_id=tenant_id,
+                                                   project_id=project_id,
                                                    svi_id=svi,
                                                    ip_address=ip_address,
                                                    subnet_mask=net_mask).\
         first()
 
 
-def get_svis(context, router_id, tenant_id):
+def get_svis(context, router_id, project_id):
     session = context.session
     return session.query(ML2_BrocadeSvi).filter_by(id=router_id,
-                                                   tenant_id=tenant_id).all()
+                                                   project_id=project_id).all()
 
 
-def get_list_svi_ids(context, router_id, tenant_id):
+def get_list_svi_ids(context, router_id, project_id):
     ves = []
-    svis = get_svis(context, router_id, tenant_id)
+    svis = get_svis(context, router_id, project_id)
     for svi in svis:
         if svi['svi_id']:
             ves.append(svi['svi_id'])
     return ves
 
 
-def create_network(context, net_id, vlan, segment_id, network_type, tenant_id):
+def create_network(context, net_id, vlan, segment_id, network_type, project_id):
     """Create a brocade specific network/port-profiles."""
 
     # only network_type of vlan is supported
@@ -121,7 +120,7 @@ def create_network(context, net_id, vlan, segment_id, network_type, tenant_id):
             net = ML2_BrocadeNetwork(id=net_id, vlan=vlan,
                                      segment_id=segment_id,
                                      network_type=network_type,
-                                     tenant_id=tenant_id)
+                                     project_id=project_id)
             session.add(net)
     return net
 
@@ -151,7 +150,7 @@ def get_networks(context, filters=None, fields=None):
 
 
 def create_port(context, port_id, network_id, physical_interface,
-                vlan_id, tenant_id, admin_state_up, host):
+                vlan_id, project_id, admin_state_up, host):
     """Create a brocade specific port, has policy like vlan."""
 
     session = context.session
@@ -163,7 +162,7 @@ def create_port(context, port_id, network_id, physical_interface,
                                    physical_interface=physical_interface,
                                    vlan_id=vlan_id,
                                    admin_state_up=admin_state_up,
-                                   tenant_id=tenant_id,
+                                   project_id=project_id,
                                    host=host)
             session.add(port)
 

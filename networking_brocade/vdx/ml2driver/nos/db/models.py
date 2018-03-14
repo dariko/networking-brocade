@@ -17,12 +17,12 @@
 """Brocade specific database schema/model."""
 import sqlalchemy as sa
 
-from neutron.db import model_base
+from neutron_lib.db import model_base
 from neutron.db import models_v2
 
 
-class ML2_BrocadeNetwork(model_base.BASEV2, models_v2.HasId,
-                         models_v2.HasTenant):
+class ML2_BrocadeNetwork(model_base.BASEV2, model_base.HasId,
+                         model_base.HasProject):
     """Schema for brocade network."""
 
     vlan = sa.Column(sa.String(10))
@@ -30,8 +30,8 @@ class ML2_BrocadeNetwork(model_base.BASEV2, models_v2.HasId,
     network_type = sa.Column(sa.String(10))
 
 
-class ML2_BrocadePort(model_base.BASEV2, models_v2.HasId,
-                      models_v2.HasTenant):
+class ML2_BrocadePort(model_base.BASEV2, model_base.HasId,
+                         model_base.HasProject):
     """Schema for brocade port."""
 
     network_id = sa.Column(sa.String(36),
@@ -42,7 +42,7 @@ class ML2_BrocadePort(model_base.BASEV2, models_v2.HasId,
     vlan_id = sa.Column(sa.String(36))
 
 
-def create_network(context, net_id, vlan, segment_id, network_type, tenant_id):
+def create_network(context, net_id, vlan, segment_id, network_type, project_id):
     """Create a brocade specific network/port-profiles."""
 
     # only network_type of vlan is supported
@@ -53,7 +53,7 @@ def create_network(context, net_id, vlan, segment_id, network_type, tenant_id):
             net = ML2_BrocadeNetwork(id=net_id, vlan=vlan,
                                      segment_id=segment_id,
                                      network_type='vlan',
-                                     tenant_id=tenant_id)
+                                     project_id=project_id)
             session.add(net)
     return net
 
@@ -83,7 +83,7 @@ def get_networks(context, filters=None, fields=None):
 
 
 def create_port(context, port_id, network_id, physical_interface,
-                vlan_id, tenant_id, admin_state_up):
+                vlan_id, project_id, admin_state_up):
     """Create a brocade specific port, has policy like vlan."""
 
     session = context.session
@@ -95,7 +95,7 @@ def create_port(context, port_id, network_id, physical_interface,
                                    physical_interface=physical_interface,
                                    vlan_id=vlan_id,
                                    admin_state_up=admin_state_up,
-                                   tenant_id=tenant_id)
+                                   project_id=project_id)
             session.add(port)
 
     return port
