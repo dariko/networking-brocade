@@ -35,7 +35,7 @@ branch_labels = (cli.EXPAND_BRANCH,)
 def upgrade():
 
     op.create_table('ml2_brocadesvis',
-                    sa.Column('tenant_id', sa.String(
+                    sa.Column('project_id', sa.String(
                         length=255), nullable=True),
                     sa.Column('id', sa.String(length=36), nullable=False),
                     sa.Column('svi_id', sa.String(length=36), nullable=False),
@@ -47,7 +47,7 @@ def upgrade():
                     sa.PrimaryKeyConstraint('id', 'svi_id'),
                     mysql_engine='InnoDB'
                     )
-    op.create_index(op.f('ix_ml2_brocadesvis_tenant_id'),
-                    'ml2_brocadesvis', ['tenant_id'], unique=False)
-    op.add_column('ml2_brocadeports', sa.Column(
-        'host', sa.String(length=255), nullable=True))
+    op.create_index(op.f('ix_ml2_brocadesvis_project_id'),
+                    'ml2_brocadesvis', ['project_id'], unique=False)
+    #op.add_column('ml2_brocadeports', sa.Column(
+        #'host', sa.String(length=255), nullable=True))

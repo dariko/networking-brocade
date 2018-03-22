@@ -551,6 +551,137 @@ DELETE_VRF = """
     </config>
 """
 
+# add vrf to bgp (rbridge_id, vrf_name)
+# router bgp
+#   address-family ipv4 unicast vrf {vrf_name}
+ADD_VRF_TO_BGP = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <router>
+                <router-bgp xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                    <address-family>
+                        <ipv4>
+                            <ipv4-unicast>
+                                <af-vrf>
+                                    <af-vrf-name>{vrf_name}</af-vrf-name>
+                                </af-vrf>
+                            </ipv4-unicast>
+                        </ipv4>
+                    </address-family>
+                </router-bgp>
+            </router>
+        </rbridge-id>
+    </config>
+"""
+
+## router bgp
+##   address-family ipv4 unicast vrf {vrf_name}
+##     multipath ebgp
+#ADD_MULTIPATH_EBGP_TO_BGP_FOR_VRF = """
+    #<config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        #<rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            #<rbridge-id>{rbridge_id}</rbridge-id>
+            #<router>
+                #<router-bgp xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                    #<address-family>
+                        #<ipv4>
+                            #<ipv4-unicast>
+                                #<af-vrf>
+                                    #<af-vrf-name>{vrf_name}</af-vrf-name>
+                                    #<af-common-cmds-holder>
+                                        #<multipath>
+                                            #<ebgp></ebgp>
+                                        #</multipath>
+                                    #</af-common-cmds-holder>
+                                #</af-vrf>
+                            #</ipv4-unicast>
+                        #</ipv4>
+                    #</address-family>
+                #</router-bgp>
+            #</router>
+        #</rbridge-id>
+    #</config>
+#"""
+
+# router bgp
+#   address-family ipv4 unicast vrf {vrf_name}
+#     multipath ebgp
+ADD_MULTIPATH_EBGP_TO_BGP_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <router>
+                <router-bgp xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                    <address-family>
+                        <ipv4>
+                            <ipv4-unicast>
+                                <af-vrf>
+                                    <af-vrf-name>{vrf_name}</af-vrf-name>
+                                    <af-common-cmds-holder>
+                                        <multipath>
+                                            <ebgp></ebgp>
+                                        </multipath>
+                                    </af-common-cmds-holder>
+                                </af-vrf>
+                            </ipv4-unicast>
+                        </ipv4>
+                    </address-family>
+                </router-bgp>
+            </router>
+        </rbridge-id>
+    </config>
+"""
+
+# rbridge-id {rbridge_id}
+# router bgp
+#   address-family ipv4 unicast vrf {vrf_name}
+#     maximum-paths {maximum_paths}
+SET_MAXIMUM_PATHS_EBGP_IN_BGP_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <router>
+                <router-bgp xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                    <address-family>
+                        <ipv4>
+                            <ipv4-unicast>
+                                <af-vrf>
+                                    <af-vrf-name>{vrf_name}</af-vrf-name>
+                                    <af-common-cmds-holder>
+                                        <maximum-paths>
+                                            <ebgp>{maximum_paths}</ebgp>
+                                        </maximum-paths>
+                                    </af-common-cmds-holder>
+                                </af-vrf>
+                            </ipv4-unicast>
+                        </ipv4>
+                    </address-family>
+                </router-bgp>
+            </router>
+        </rbridge-id>
+    </config>
+"""
+
+# rbridge-id {rbridge_id}
+#   evpn-instance {evpn_instance_name}
+#     vni add {vni}
+ADD_VNI_TO_EVPN_INSTANCE = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+        <rbridge-id>{rbridge_id}</rbridge-id>
+            <evpn-instance xmlns="urn:brocade.com:mgmt:brocade-bgp">
+                <instance-name>{evpn_instance_name}</instance-name>
+                <vni>
+                    <vni-add>
+                        <add>{vni}</add>
+                    </vni-add>
+                </vni>
+            </evpn-instance>
+        </rbridge-id>
+    </config>
+"""
+
 # configure route distinguisher for vrf (rbridge_id,vrf_name, rd)
 CONFIGURE_RD_FOR_VRF = """
     <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">

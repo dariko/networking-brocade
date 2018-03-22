@@ -26,7 +26,7 @@ from networking_brocade.vdx.db import models as brocade_db
 from networking_brocade.vdx.non_ampp.ml2driver.nos import nosdriver as driver
 from networking_brocade.vdx.non_ampp.ml2driver import utils
 from neutron.common import constants as n_const
-from neutron import context as neutron_context
+from neutron_lib import context as neutron_context
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants as p_const
 from neutron.plugins.ml2 import driver_api as api

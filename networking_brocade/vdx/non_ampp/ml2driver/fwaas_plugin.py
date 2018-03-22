@@ -19,7 +19,7 @@ from neutron.api.v2 import attributes as attr
 from neutron.common import exceptions as n_exception
 from neutron.common import rpc as n_rpc
 from neutron.common import topics
-from neutron import context as neutron_context
+from neutron_lib import context as neutron_context
 from neutron import manager
 from neutron.plugins.common import constants as const
 from oslo_config import cfg

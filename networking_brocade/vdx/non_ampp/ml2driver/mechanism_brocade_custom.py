@@ -175,9 +175,15 @@ class BrocadeMechanismCustom(api.MechanismDriver):
                         driver.add_address_family_export_targets_for_vrf(
                             rbridge_id,vrf_name,self.additional_export_vrf)
                 except Exception as e:
-                    rbridge_results[rbridge_id] = False
+                    rbridge_results[rbridge_id-1] = False
                     result_text.append("error configuring vrf: %s switch: %s rbridge_id: %s rd: %s vlan_id: %s error: %s" %
                                        (vrf_name, switch_name, rbridge_id, rd, vlan_id, e))
+                    try:
+                        driver.delete_vrf(rbridge_id, vrf_name)
+                        result_text.append("deleted vrf: %s switch: %s rbridge_id: %s" %
+                                       (vrf_name, switch_name, rbridge_id))
+                    except Exception:
+                        pass
                 try:
                     driver.create_vlan_interface(vlan_id)
                     driver.configure_svi(rbridge_id, vlan_id)
@@ -187,9 +193,35 @@ class BrocadeMechanismCustom(api.MechanismDriver):
                     driver.add_arp_learn_any_to_vlan_interface(rbridge_id, vlan_id)
                     driver.set_arp_aging_timeout_for_vlan_interface(rbridge_id, vlan_id, 4)
                 except Exception as e:
-                    rbridge_results[rbridge_id] = False
+                    rbridge_results[rbridge_id-1] = False
                     result_text.append("error configuring vni: %s switch: %s rbridge_id: %s error: %s" %
                                        (vlan_id, switch_name, rbridge_id, e))
+                    try:
+                        driver.delete_vlan_interface(vlan_id)
+                        driver.delete_vrf(rbridge_id, vrf_name)
+                    except Exception:
+                        pass
+                try:
+                    #result_text.append("1111111111111111111111")
+                    driver.add_vrf_to_bgp(rbridge_id, vrf_name)
+                    driver.set_rbridge_router_bgp_address_family_multipath_ebgp(rbridge_id, vrf_name)
+                    driver.set_rbridge_router_bgp_address_family_maximum_paths_ebgp(rbridge_id, vrf_name, 8)
+                    driver.set_rbridge_router_bgp_address_family_redistribute_connected(rbridge_id, vrf_name)
+                    #result_text.append("2222222222222222222222")
+                    #driver.add_multipath_ebgp_to_bgp_for_vrf(rbridge_id, vrf_name)
+                    #driver.add_vni_to_evpn_instance(rbridge_id, vlan_id, self.switches[switch_name]['evpn_instance']
+                except Exception as e:
+                    rbridge_results[rbridge_id-1] = False
+                    result_text.append("error configuring bgp for vrf: %s switch: %s rbridge_id: %s error: %s" %
+                                       (vrf_name, switch_name, rbridge_id, e))
+                    try:
+                        #driver.remove_vrf_from_bgp(rbridge_id, vlan_name)
+                        driver.delete_vrf(rbridge_id, vrf_name)
+                        driver.delete_vlan_interface(vlan_id)
+                        pass
+                    except Exception:
+                        pass
+                    
                 for port in self.switches[switch_name].port:
                     try:
                         port_speed = port.split(':')[1]
@@ -199,15 +231,16 @@ class BrocadeMechanismCustom(api.MechanismDriver):
                     except Exception as e:
                         rbridge_results[0] = False
                         rbridge_results[1] = False
-                        result_text.append("error adding tag: s switch: %s port_name: %s error: %s" %
+                        result_text.append("error adding tag: %s switch: %s port_name: %s error: %s" %
                                            (vlan_id, switch_name, port_name, e))
                 results[result_key]['text'] = "; ".join(result_text)
                 results[result_key]['status'] = True in rbridge_results
         except Exception as e:
             results[result_key]['status'] = False
-            results[result_key]['text'] = "Error configuring network switch: %s vrf: %s vlan_id: %s : %s" % (switch_name, vrf_name, vlan_id, e)
+            results[result_key]['text'] = "Error configuring network switch: %s vrf: %s vlan_id: %s error: %s" % (switch_name, vrf_name, vlan_id, e)
             
-
+    def rollback_network(self, switch_name, vlan_id, vrf_name, rd, results):
+        pass
 
     def create_network_postcommit(self, mech_context):
         """Create Network on the switch."""
@@ -238,11 +271,6 @@ class BrocadeMechanismCustom(api.MechanismDriver):
             results = dict((k,{'status': False, 'text': ''}) for k in self._drivers.keys())
             for switch_name, _driver in self._drivers.iteritems():
                 rd = "%s:%s" % (self.switches[switch_name]['address'], vlan_id)
-                LOG.debug("creating vrf: %s switch: %s(%s) rd: %s results: %s" %
-                      (vrf_name, switch_name,
-                       self.switches[switch_name]['address'],
-                       rd,
-                       results))
                 thread = Thread(target=self.configure_network_on_switch, args=[switch_name, vlan_id, vrf_name, rd, results, switch_name])
                 thread.start()
                 threads.append(thread)
@@ -253,10 +281,12 @@ class BrocadeMechanismCustom(api.MechanismDriver):
                             (s, results[s]['text']) for s in results.keys()])
             if not result:
                 error_switches = [ s for s in self.switches.keys() if not results[s]['status'] ]
-                raise Exception("Error deleting network: %s" % result_text)
+                raise Exception("Error creating network: %s" % result_text)
             LOG.info("created network, returned text: %s", result_text)
         except Exception:
             LOG.exception(_LE("Brocade NOS driver: failed in create network"))
+            results_d = dict((k,{'status': False, 'text': ''}) for k in self._drivers.keys())
+            deconfigure_network_on_switch(switch_name, vrf_name, vlan_id, results_d, switch_name)
             brocade_db.delete_network(context, network_id)
             raise Exception(
                 _("Brocade Mechanism: create_network_postcommmit failed"))
@@ -294,6 +324,9 @@ class BrocadeMechanismCustom(api.MechanismDriver):
         network = mech_context.current
         network_id = network['id']
         brocade_network = brocade_db.get_network(mech_context._plugin_context, network_id)
+        if not brocade_network:
+            LOG.debug("network %s not in brocade db, ignoring" % network_id)
+            return
         vlan_id = brocade_network['vlan']
         vrf_name = self._vrf_name(vlan_id)
         try:

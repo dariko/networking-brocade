@@ -41,7 +41,8 @@ DEFAULT_MTU = []
 DEFAULT_NATIVE_VLAN = []
 DEFAULT_RBRIDGE_RANGE = []
 VCS_OPTS = [cfg.MultiStrOpt('port', default=''),
-            cfg.StrOpt('address', default='')]
+            cfg.StrOpt('address', default=''),
+            cfg.StrOpt('evpn_instance', default='')]
 ML2_BROCADE = [cfg.ListOpt('vcs', default='',
                           help=_(
                             'The name of the vcs cluster, to be'

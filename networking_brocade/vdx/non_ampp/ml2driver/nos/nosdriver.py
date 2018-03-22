@@ -39,6 +39,9 @@ import six
 import sys
 import time
 
+import requests
+import re
+
 LOG = logging.getLogger(__name__)
 SSH_PORT = 22
 RETRYABLE_ERRORS = ["NODE_IS_NOT_READY",
@@ -123,6 +126,9 @@ class NOSdriver(object):
                           "for Reason %(exc)s"), {'exc': e})
             raise RetryableException(exc=e)
         except Exception as e:
+            print('msg: %s' % e)
+            print('dir: %s' % dir(e))
+            print('class: %s' % str(e.__class__))
             LOG.warning(_LW("_edit_config(CLUSTER ERRORS)"
                           "for Reason %(exc)s"), {'exc': e})
             for exc_str in RETRYABLE_ERRORS:
@@ -214,6 +220,156 @@ class NOSdriver(object):
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.exception(_LE("NETCONF error"))
+
+    def add_vrf_to_bgp(self, rbridge_id, vrf_name):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_VRF_TO_BGP.format(rbridge_id=rbridge_id, vrf_name=vrf_name)
+        self._edit_config('running', config=confstr)
+
+    #def add_multipath_ebgp_to_bgp_for_vrf(self, rbridge_id, vrf_name):
+        #"""add anycast ip address to a vlan interface."""
+
+        #confstr = template.ADD_MULTIPATH_EBGP_TO_BGP_FOR_VRF.format(rbridge_id=rbridge_id, vrf_name=vrf_name)
+        #self._edit_config('running', config=confstr)
+
+    def add_multipath_ebgp_to_bgp_for_vrf(self, rbridge_id, vrf_name):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_MULTIPATH_EBGP_TO_BGP_FOR_VRF.format(rbridge_id=rbridge_id, vrf_name=vrf_name)
+        self.connect(self.host, self.username, self.password).edit_config(target='running', config=confstr)
+        #mgr.exec_command("show interface vlan 1102")
+
+    def add_vni_to_evpn_instance(self, rbridge_id, vni, evpn_instance_name):
+        """add anycast ip address to a vlan interface."""
+
+        confstr = template.ADD_VNI_TO_EVPN_INSTANCE.format(
+                      rbridge_id=rbridge_id, vni=vni,
+                      evpn_instance_name=evpn_instance_name)
+        self.connect(self.host, self.username, self.password).edit_config(target='running', config=confstr)
+        #mgr.exec_command("show interface vlan 1102")
+
+    def has_rbridge_router_bgp_address_family_multipath_ebgp(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/multipath")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.get(url,
+                                auth=(self.username, self.password))
+        if not response.ok:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, r.reason, r.content))
+        return "ebgp" in response.content
+        
+    def unset_rbridge_router_bgp_address_family_multipath_ebgp(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/multipath")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.delete(url, auth=(self.username, self.password))
+        return response
+    
+    def set_rbridge_router_bgp_address_family_multipath_ebgp(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/multipath")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data="<ebgp></ebgp>")
+        if response.ok or 'object already exists' in response.content:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def has_rbridge_router_bgp_address_family_redistribute_connected(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/redistribute/connected")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.get(url, auth=(self.username, self.password))
+        if not response.ok:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        return "redistribute-connected>true</redistribute-connected>" in response.text
+    
+    def unset_rbridge_router_bgp_address_family_redistribute_connected(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/redistribute/connected")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.delete(url, auth=(self.username, self.password))
+        if not response.ok:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        return response
+
+    def set_rbridge_router_bgp_address_family_redistribute_connected(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/redistribute/connected")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data="<redistribute-connected>true</redistribute-connected>")
+
+        if response.ok or 'object already exists' in response.content:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    #def get_rbridge_router_bgp_address_family_maximum_paths_ebgp(self, rbridge_id, vrf_name):
+        #url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               #"/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}"
+               #"/maximum-paths")
+        #url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        #response = requests.get(url, auth=(self.username, self.password)
+                                 #)
+        #return response
+    
+    def get_rbridge_router_bgp_address_family_maximum_paths_ebgp(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/maximum-paths/")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.get(url, auth=(self.username, self.password))
+        if not response.ok:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        r = re.search('<ebgp>([0-9]*)</ebgp>',response.content)
+        if r:
+            return r.groups()[0]
+        else:
+            return False
+
+    def unset_rbridge_router_bgp_address_family_maximum_paths_ebgp(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/maximum-paths/ebgp")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.delete(url, auth=(self.username, self.password))
+        if not response.ok and not response.status_code==404:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        return response
+
+    def set_rbridge_router_bgp_address_family_maximum_paths_ebgp(self, rbridge_id, vrf_name,maximum_paths):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/maximum-paths/")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data="<ebgp>%s</ebgp>" % maximum_paths)
+        if response.ok:
+            return response
+        else:
+            if response.status_code==409:
+                current = self.get_rbridge_router_bgp_address_family_maximum_paths_ebgp(
+                                                rbridge_id, vrf_name)
+                if current:
+                    self.unset_rbridge_router_bgp_address_family_maximum_paths_ebgp(rbridge_id, vrf_name)
+                    return self.set_rbridge_router_bgp_address_family_maximum_paths_ebgp(rbridge_id, vrf_name, maximum_paths)
+        
+        
+        raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                        (url, response.status_code, response.reason, response.content))
+    
+    #def set_maximum_paths_ebgp_in_bgp_for_vrf(self, rbridge_id, vrf_name, maximum_paths):
+        #"""add anycast ip address to a vlan interface."""
+        #confstr = template.SET_MAXIMUM_PATHS_EBGP_IN_BGP_FOR_VRF.format(rbridge_id=rbridge_id, vrf_name=vrf_name, maximum_paths=maximum_paths)
+        #self.connect(self.host, self.username, self.password).edit_config(target='running', config=confstr)
+        ##mgr.exec_command("show interface vlan 1102")
 
     def configure_l2_and_trunk_mode_for_interface(self, devices, lacp,
                                                   mtu, native_vlans):
