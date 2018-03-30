@@ -42,12 +42,19 @@ DEFAULT_NATIVE_VLAN = []
 DEFAULT_RBRIDGE_RANGE = []
 VCS_OPTS = [cfg.MultiStrOpt('port', default=''),
             cfg.StrOpt('address', default=''),
+            cfg.StrOpt('is_border', default=''),
             cfg.StrOpt('evpn_instance', default='')]
 ML2_BROCADE = [cfg.ListOpt('vcs', default='',
                           help=_(
                             'The name of the vcs cluster, to be'
                             'configured in vcs_[name] section')),
-               cfg.StrOpt('additional_export_vrf', default=''),
+               cfg.StrOpt('external_vrf_name'),
+               cfg.StrOpt('external_vrf_vni'),
+               cfg.StrOpt('external_collector_vrf_name'),
+               cfg.StrOpt('internal_vrf_name'),
+               cfg.StrOpt('internal_vrf_vni'),
+               cfg.StrOpt('internal_collector_vrf_name'),
+               cfg.StrOpt('additional_export_vrf', default=None),
                cfg.StrOpt('username', default='admin',
                           help=_('The SSH username to use')),
                cfg.StrOpt('password', default='password', secret=True,
@@ -162,6 +169,10 @@ def get_brocade_fwaas_config():
 def get_additional_export_vrf():
     register_brocade_credentials()
     return cfg.CONF.ml2_brocade.additional_export_vrf
+
+def get_brocade_ml2_conf():
+    register_brocade_credentials()
+    return cfg.CONF.ml2_brocade
 
 def get_acl_files():
     fwaas = get_brocade_fwaas_config()

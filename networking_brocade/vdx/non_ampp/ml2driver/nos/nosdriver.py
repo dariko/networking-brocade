@@ -38,6 +38,7 @@ from oslo_utils import excutils
 import six
 import sys
 import time
+import re
 
 import requests
 import re
@@ -87,7 +88,7 @@ def retry(ExceptionToCheck, tries=_RETRIES, delay=_NDELAY, backoff=_NBACKOFF):
 
 class RetryableException(exceptions.NeutronException):
     message = _("Transient errors Try again after some time."
-                " Reason: %(exc)s.")
+                " Reason: %(self)s.")
 
 
 class NOSdriver(object):
@@ -96,12 +97,13 @@ class NOSdriver(object):
     Handles life-cycle management of Neutron network
     """
 
-    def __init__(self, host, username, password):
+    def __init__(self, host, username, password, evpn_instance):
         self.mgr = None
         self.host = host
         self.username = username
         self.password = password
         self.osversion = self.get_nos_version().split('.', 2)
+        self.evpn_instance = evpn_instance
 
     def _set_default_timeout_ncclient(self):
         mgr = self.connect(self.host, self.username, self.password)
@@ -221,6 +223,15 @@ class NOSdriver(object):
             with excutils.save_and_reraise_exception():
                 LOG.exception(_LE("NETCONF error"))
 
+    def set_route_map_for_svi(self, rbridge_id, vlan_id, route_map):
+        """set route map for svi"""
+
+        confstr = template.SET_ROUTE_MAP_FOR_SVI.format(
+            rbridge_id=rbridge_id,
+            vlan_id=vlan_id,
+            route_map=route_map)
+        self._edit_config('running', config=confstr)
+
     def add_vrf_to_bgp(self, rbridge_id, vrf_name):
         """add anycast ip address to a vlan interface."""
 
@@ -311,6 +322,58 @@ class NOSdriver(object):
         else:
             raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
                             (url, response.status_code, response.reason, response.content))
+    
+    def add_rbridge_router_evpn_instance_vnis(self, rbridge_id, vni):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/evpn-instance/{evpn_instance}/vni")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, evpn_instance=self.evpn_instance)
+        data="""
+        <vni><add>%s</add></vni>
+        """ % vni
+        response = requests.patch(url, auth=(self.username, self.password),
+                                  data=data)
+        if response.ok:
+            return response
+        else:
+            raise Exception('Error adding vni %s to evpn_instance %s in rbridge %s' %
+                            (vni, self.evpn_instance, rbridge_id))
+
+    def remove_rbridge_router_evpn_instance_vnis(self, rbridge_id, vni):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/evpn-instance/{evpn_instance}/vni")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, evpn_instance=self.evpn_instance)
+        data="""
+        <vni><remove>%s</remove></vni>
+        """ % vni
+        response = requests.patch(url, auth=(self.username, self.password),
+                                  data=data)
+        if response.ok:
+            return response
+        else:
+            raise Exception('Error removing vni %s from evpn_instance %s in rbridge %s' %
+                            (vni, self.evpn_instance, rbridge_id))
+        
+    def get_rbridge_router_evpn_instance_vnis(self, rbridge_id):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/evpn-instance/{evpn_instance}/vni")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, evpn_instance=self.evpn_instance)
+        response = requests.get(url, auth=(self.username, self.password))
+        if not response.ok:
+            raise Exception('GET to URL %s returned %s' % (url, ret))
+        match = re.match('.*<add>(.*)</add>.*', response.content,re.MULTILINE+re.DOTALL)
+        if not match:
+            raise Exception("can't parse vnis: got data %s", response.content)
+        vni_groups = (match.groups()[0].split(','))
+        vnis = []
+        for vg in vni_groups:
+            if '-' in vg:
+                vnis.extend(range(int(vg.split('-')[0]),int(vg.split('-')[1])+1))
+            else:
+                vnis.append(int(vg))
+        return vnis
+        #raise Exception('%s: %s -- %s' % (url, response.status_code, response.content))
+        
+        
     
     #def get_rbridge_router_bgp_address_family_maximum_paths_ebgp(self, rbridge_id, vrf_name):
         #url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
@@ -744,9 +807,152 @@ class NOSdriver(object):
             with excutils.save_and_reraise_exception():
                 LOG.exception(_LE("NETCONF error"))
 
+    def create_svi_interface_rest(self, rbridge_id, vlan_id):
+        url = ("http://{address}/rest/config/running/"
+               "rbridge-id/%s/interface/" ) % rbridge_id
+        url = url.format(address=self.host)
+        data="""
+            <Ve>
+                <name>%s</name>
+            </Ve>
+        """ % vlan_id
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data=data)
+        if response.ok or 'object already exists' in response.content:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def no_shut_svi_rest(self, rbridge_id, vlan_id):
+        url = ("http://{address}/rest/config/running/"
+               "rbridge-id/%s/interface/ve/%s/shutdown" )% \
+               (rbridge_id, vlan_id)
+        url = url.format(address=self.host)
+        response = requests.delete(url, auth=(self.username, self.password))
+        if response.ok or response.status_code==404:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def add_suppress_arp_to_vlan_interface(self, vlan_id):
+        url = ("http://{address}/rest/config/running/"
+               "interface/vlan/%s/suppress-arp" )% (vlan_id)
+        url = url.format(address=self.host)
+        data = '<enable>false</enable>'
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data=data)
+        LOG.debug('ARSTARST: %s; %s' % (response.status_code, response))
+        if response.ok or response.status_code==409:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def add_ip_arp_learn_any_to_svi(self, rbridge_id, vlan_id):
+        url = ("http://{address}/rest/config/running/rbridge-id/%s/"
+               "interface/ve/%s/ip/arp" )% (rbridge_id, vlan_id)
+        url = url.format(address=self.host)
+        data = '<arp><learn-any>true</learn-any></arp>'
+        response = requests.put(url, auth=(self.username, self.password),
+                                 data=data)
+        LOG.debug('add_learn_any: %s; %s' % (response.status_code, response))
+        if response.ok or response.status_code==409:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def set_ip_arp_agint_timeout_for_svi(self, rbridge_id, vlan_id, arp_aging_timeout):
+        url = ("http://{address}/rest/config/running/rbridge-id/%s/"
+               "interface/ve/%s/ip/arp-aging-timeout" )% (rbridge_id, vlan_id)
+        url = url.format(address=self.host)
+        data = '<arp-aging-timeout>%s</arp-aging-timeout>' % arp_aging_timeout
+        response = requests.put(url, auth=(self.username, self.password),
+                                 data=data)
+        LOG.debug('set arp-aging-timeout: %s; %s' % (response.status_code, response))
+        if response.ok:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def set_ip_policy_route_map_for_svi(self, rbridge_id, vlan_id, route_map):
+        url = ("http://{address}/rest/config/running/rbridge-id/%s/"
+               "interface/ve/%s/ip/policy/route-map" )% (rbridge_id, vlan_id)
+        url = url.format(address=self.host)
+        data = '<route-map><route-map-name>%s</route-map-name></route-map>' % route_map
+        response = requests.patch(url, auth=(self.username, self.password),
+                                 data=data)
+        LOG.debug('set ip route map: %s; %s' % (response.status_code, response))
+        if response.ok:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    def set_vrf_forwarding_for_svi(self, rbridge_id, vlan_id, vrf):
+        url = ("http://{address}/rest/config/running/rbridge-id/%s/"
+               "interface/ve/%s/vrf" )% (rbridge_id, vlan_id)
+        url = url.format(address=self.host)
+        data = '<vrf><forwarding>%s</forwarding></vrf>' % vrf
+        response = requests.put(url, auth=(self.username, self.password),
+                                 data=data)
+        LOG.debug('ARSTARST: %s; %s' % (response.status_code, response))
+        if response.ok or response.status_code==409:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+
+        
+    
+    def create_vlan_interface_rest(self, vlan_id):
+        url = ("http://{address}/rest/config/running/interface")
+        url = url.format(address=self.host)
+        data="<Vlan><name>%s</name></Vlan>" % vlan_id
+        data="""
+            <Vlan>
+                <name>%s</name>
+            </Vlan>
+        """ % vlan_id
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data=data)
+        if response.ok or 'object already exists' in response.content:
+            return response
+        else:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+    
+    #def configure_vlan_interface_rest(self, vlan_id, shutdown=False):
+        
+        
+    ##def set_rbridge_router_bgp_address_family_redistribute_connected(self, rbridge_id, vrf_name):
+        ##url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               ##"/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/redistribute/connected")
+        ##url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        ##response = requests.post(url, auth=(self.username, self.password),
+                                 ##data="<redistribute-connected>true</redistribute-connected>")
+
+
+        
+        
+        #url = ("http://{address}/rest/config/running/interface/Vlan/%s" % vlan_id)
+        #url = url.format(address=self.host)
+        #data="<Vlan><name>%s</name></Vlan>" % vlan_id
+        #data="<Vlan><name>%s</name><shutdown>%s</shutdown></Vlan>" % ( vlan_id, shutdown )
+        #response = requests.post(url, auth=(self.username, self.password),
+                                 #data=data)
+        #if response.ok: #or 'object already exists' in response.content:
+            #return response
+        #else:
+            #raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            #(url, response.status_code, response.reason, response.content))
+
+    
     def create_vlan_interface(self, vlan_id):
         """Configures a VLAN interface."""
-
         confstr = template.CREATE_VLAN_INTERFACE.format(vlan_id=vlan_id)
         self._edit_config('running', confstr)
 
@@ -770,9 +976,13 @@ class NOSdriver(object):
                                              vrf_name=vrf_name)
         self._edit_config('running', confstr)
 
-    def configure_rd_for_vrf(self, rbridge_id, vrf_name, rd):
+    def configure_rd_for_vrf(self, rbridge_id, vrf_name, rd=None, ident=None):
         """configure rd on vrf  on rbridge."""
-
+        
+        if not rd and not ident:
+            raise Exception('One of rd, vlan_id required')
+        if not rd and ident:
+            rd = "%s:%s" % (self.host, ident)
         confstr = template.CONFIGURE_RD_FOR_VRF.format(rbridge_id=rbridge_id,
                                                        vrf_name=vrf_name,
                                                        rd=rd)
@@ -787,8 +997,9 @@ class NOSdriver(object):
         self._edit_config('running', confstr)
 
     def add_address_family_import_targets_for_vrf(self, rbridge_id, vrf_name, vni):
+        #self.mgr = None
         """configure ipv4 address family to vrf  on rbridge."""
-
+        
         confstr = template.ADD_ADDRESS_FAMILY_TARGET_FOR_VRF.format(
             rbridge_id=rbridge_id, vrf_name=vrf_name,
             vni=vni,direction="import")
@@ -796,8 +1007,25 @@ class NOSdriver(object):
 
     def add_address_family_export_targets_for_vrf(self, rbridge_id, vrf_name, vni):
         """configure ipv4 address family to vrf  on rbridge."""
-
+        #self.mgr = None
         confstr = template.ADD_ADDRESS_FAMILY_TARGET_FOR_VRF.format(
+            rbridge_id=rbridge_id, vrf_name=vrf_name,
+            vni=vni,direction="export")
+        self._edit_config(target='running', config=confstr)
+
+    def remove_address_family_import_targets_for_vrf(self, rbridge_id, vrf_name, vni):
+        #self.mgr = None
+        """configure ipv4 address family to vrf  on rbridge."""
+        
+        confstr = template.REMOVE_ADDRESS_FAMILY_TARGET_FOR_VRF.format(
+            rbridge_id=rbridge_id, vrf_name=vrf_name,
+            vni=vni,direction="import")
+        self._edit_config(target='running', config=confstr)
+
+    def remove_address_family_export_targets_for_vrf(self, rbridge_id, vrf_name, vni):
+        """configure ipv4 address family to vrf  on rbridge."""
+        #self.mgr = None
+        confstr = template.REMOVE_ADDRESS_FAMILY_TARGET_FOR_VRF.format(
             rbridge_id=rbridge_id, vrf_name=vrf_name,
             vni=vni,direction="export")
         self._edit_config(target='running', config=confstr)
@@ -828,8 +1056,9 @@ class NOSdriver(object):
 
     def configure_svi(self, rbridge_id, vlan_id):
         """configure SVI with ip address on rbridge."""
-        template.CONFIGURE_SVI.format(
+        confstr = template.CONFIGURE_SVI.format(
             rbridge_id=rbridge_id, vlan_id=vlan_id)
+        self._edit_config('running', confstr)
 
     def configure_svi_with_ip_address(self, rbridge_id, vlan_id, ip_address):
         """configure SVI with ip address on rbridge."""
@@ -841,6 +1070,15 @@ class NOSdriver(object):
     def configure_svi_with_ip_address_anycast(self, rbridge_id, vlan_id, ip_address):
         """configure SVI with anycast ip address on rbridge."""
         confstr = template.CONFIGURE_SVI_WITH_IP_ADDRESS_ANYCAST.format(
+            rbridge_id=rbridge_id,
+            vlan_id=vlan_id,
+            ip_address=ip_address)
+
+        self._edit_config(target='running', config=confstr)
+
+    def deconfigure_svi_with_ip_address_anycast(self, rbridge_id, vlan_id, ip_address):
+        """configure SVI with anycast ip address on rbridge."""
+        confstr = template.DECONFIGURE_SVI_WITH_IP_ADDRESS_ANYCAST.format(
             rbridge_id=rbridge_id,
             vlan_id=vlan_id,
             ip_address=ip_address)

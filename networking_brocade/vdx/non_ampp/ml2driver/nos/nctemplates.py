@@ -209,6 +209,29 @@ ADD_OR_REMOVE_VLAN_TO_INTERFACE = """
     </config>
 """
 
+# rbridge_id, vlan_id, route_map
+SET_ROUTE_MAP_FOR_SVI = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+    <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+        <rbridge-id>{rbridge_id}/rbridge-id>
+        <interface xmlns="urn:brocade.com:mgmt:brocade-interface">
+            <ve>
+                <name>{vlan_id}</name>
+                <ip-pbr-interface xmlns="urn:brocade.com:mgmt:brocade-ip-policy">
+                    <ip>
+                        <policy>
+                            <route-map>
+                                <route-map-name>{route_map}</route-map-name>
+                            </route-map>
+                        </policy>
+                    </ip>
+                </ip-pbr-interface>
+            </ve>
+        </interface>
+    </rbridge-id>   
+    </config>
+"""
+
 # set learn-any for SVI (rbridge_id,vlan_id)
 ADD_ARP_LEARN_ANY_TO_SVI = """
     <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -465,6 +488,25 @@ CONFIGURE_SVI_WITH_IP_ADDRESS_ANYCAST = """
                     <name>{vlan_id}</name>
                     <ip xmlns="urn:brocade.com:mgmt:brocade-ip-config">
                         <ip-anycast-address xmlns="urn:brocade.com:mgmt:brocade-vrrp">
+                            <ip-address>{ip_address}</ip-address>
+                        </ip-anycast-address>
+                    </ip>
+                </ve>
+            </interface>
+         </rbridge-id>
+    </config>
+"""
+
+# Add anycast ipaddress to SVI (rbridge_id,vlan_id,ip_address)
+DECONFIGURE_SVI_WITH_IP_ADDRESS_ANYCAST = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <interface xmlns="urn:brocade.com:mgmt:brocade-interface">
+                <ve>
+                    <name>{vlan_id}</name>
+                    <ip xmlns="urn:brocade.com:mgmt:brocade-ip-config">
+                        <ip-anycast-address xmlns="urn:brocade.com:mgmt:brocade-vrrp" operation="delete">
                             <ip-address>{ip_address}</ip-address>
                         </ip-anycast-address>
                     </ip>
@@ -752,6 +794,27 @@ ADD_ADDRESS_FAMILY_TARGET_FOR_VRF = """
                     <ip>
                         <unicast>
                             <route-target>
+                                <action>{direction}</action>
+                                <target-community>{vni}:{vni}</target-community>
+                            </route-target>
+                          </unicast>
+                    </ip>
+                </address-family>
+            </vrf>
+         </rbridge-id>
+    </config>
+"""
+
+REMOVE_ADDRESS_FAMILY_TARGET_FOR_VRF = """
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+         <rbridge-id xmlns="urn:brocade.com:mgmt:brocade-rbridge">
+            <rbridge-id>{rbridge_id}</rbridge-id>
+            <vrf xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                <vrf-name>{vrf_name}</vrf-name>
+                <address-family xmlns="urn:brocade.com:mgmt:brocade-vrf">
+                    <ip>
+                        <unicast>
+                            <route-target operation="delete">
                                 <action>{direction}</action>
                                 <target-community>{vni}:{vni}</target-community>
                             </route-target>
