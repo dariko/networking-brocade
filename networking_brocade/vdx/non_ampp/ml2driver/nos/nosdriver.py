@@ -39,7 +39,7 @@ import six
 import sys
 import time
 import re
-
+import lxml.etree as ET
 import requests
 import re
 
@@ -112,7 +112,6 @@ class NOSdriver(object):
     @retry(RetryableException)
     def _edit_config(self, target, config, timeout=30):
         """Modify switch config for a target config type."""
-        #LOG.debug("AAA: %s" % config.replace('\n',' '))
         try:
             mgr = self.connect(self.host, self.username, self.password)
             if timeout != 30:
@@ -373,8 +372,6 @@ class NOSdriver(object):
         return vnis
         #raise Exception('%s: %s -- %s' % (url, response.status_code, response.content))
         
-        
-    
     #def get_rbridge_router_bgp_address_family_maximum_paths_ebgp(self, rbridge_id, vrf_name):
         #url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
                #"/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}"
@@ -428,11 +425,150 @@ class NOSdriver(object):
         raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
                         (url, response.status_code, response.reason, response.content))
     
+    def get_rbridge_router_bgp_address_family_maximum_paths(self, rbridge_id, vrf_name):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/maximum-paths/")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.get(url, auth=(self.username, self.password))
+        if not response.ok:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        r = re.search('<load-sharing-value>([0-9]*)</load-sharing-value>',response.content)
+        if r:
+            return r.groups()[0]
+        else:
+            return False
+
+    def unset_rbridge_router_bgp_address_family_maximum_paths(self, rbridge_id, vrf_name):
+        # MUST TEST
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/maximum-paths/load-sharing-value")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.delete(url, auth=(self.username, self.password))
+        if not response.ok and not response.status_code==404:
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        return response
+
+    def set_rbridge_router_bgp_address_family_maximum_paths(self, rbridge_id, vrf_name,maximum_paths):
+        url = ("http://{address}/rest/config/running/rbridge-id/{rbridge_id}"
+               "/router/bgp/address-family/ipv4/unicast/vrf/{vrf_name}/maximum-paths/")
+        url = url.format(address=self.host, rbridge_id=rbridge_id, vrf_name=vrf_name)
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data="<load-sharing-value>%s</load-sharing-value>" % maximum_paths)
+        if response.ok:
+            return response
+        else:
+            if response.status_code==409:
+                current = self.get_rbridge_router_bgp_address_family_maximum_paths(
+                                                rbridge_id, vrf_name)
+                if current:
+                    self.unset_rbridge_router_bgp_address_family_maximum_paths(rbridge_id, vrf_name)
+                    return self.set_rbridge_router_bgp_address_family_maximum_paths_ebgp(rbridge_id, vrf_name, maximum_paths)
+        raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                        (url, response.status_code, response.reason, response.content))
+    
     #def set_maximum_paths_ebgp_in_bgp_for_vrf(self, rbridge_id, vrf_name, maximum_paths):
         #"""add anycast ip address to a vlan interface."""
         #confstr = template.SET_MAXIMUM_PATHS_EBGP_IN_BGP_FOR_VRF.format(rbridge_id=rbridge_id, vrf_name=vrf_name, maximum_paths=maximum_paths)
         #self.connect(self.host, self.username, self.password).edit_config(target='running', config=confstr)
         ##mgr.exec_command("show interface vlan 1102")
+    
+    #def get_access_list(self, access_list_name):
+        #s = requests.Session()
+        #url = ("http://{address}/rest/config/running/ip/access_list"
+               #"/extended/{access_list_name}")
+        #url = url.format(address=self.host, rbridge_id=rbridge_id, evpn_instance=self.evpn_instance)
+        #response = s.get(url, auth=(self.username, self.password))
+        #return response.text
+        
+    def delete_acl_seq(self, access_list_name, seq_id):
+        s = requests.session()
+        url = ("http://{address}/rest/config/running/ip/access-list"
+               "/extended/{access_list_name}/seq/{seq_id}")
+        url = url.format(address=self.host,
+                         access_list_name=access_list_name,
+                         seq_id=seq_id)
+        response = s.delete(url, auth=(self.username, self.password))
+        if response.status_code == '404':
+            return True
+        elif not response.ok:
+            raise Exception('Error deleting seq %s from extended '
+                            'access-list %s, response.status_code: %s '
+                            'response.content: %s' %
+                            (seq_id, access_list_name, response.status_code,
+                             response.content))
+
+    def create_acl_seq(self, access_list_name, seq):
+        s = requests.session()
+        url = ("http://{address}/rest/config/running/ip/access-list"
+               "/extended/{access_list_name}/")
+        url = url.format(address=self.host,
+                         access_list_name=access_list_name,
+                         seq_id=seq['id'])
+        payload = """
+            <seq>
+                <seq-id>{seq_id}</seq-id>
+                <action>permit</action>
+                <protocol-type>ip</protocol-type>
+                <src-host-any-sip>any</src-host-any-sip>
+                <dst-host-any-dip>{dst_address}</dst-host-any-dip>
+                <dst-mask>{dst_wildcard_mask}</dst-mask>
+                <vlan>{src_vlan}</vlan>
+            </seq>
+        """.format(seq_id=seq['id'], dst_address=seq['dst_address'],
+                   dst_wildcard_mask=seq['dst_wildcard_mask'],
+                   src_vlan=seq['src_vlan'])
+        
+        response = requests.post(url, auth=(self.username, self.password),
+                                 data=payload)
+        if response.ok:
+            return response
+        else:
+            if response.status_code==409:
+                LOG.debug('access-list seq already present')
+                return response
+            else:
+                raise Exception('error creating access-list seq %s'
+                                'response.status_code: %s '
+                                'response.content: %s' %
+                                (seq, response.status_code, response.content))
+
+    def create_access_list(self, access_list_name):
+        s = requests.session()
+        url = ("http://{address}/rest/config/running/ip/access-list"
+               "/extended/{access_list_name}")
+        url = url.format(address=self.host, access_list_name=access_list_name)
+        payload = "<extended><name>%s</name></extended>" % access_list_name
+        response = s.put(url, auth=(self.username, self.password),
+                         data=payload)
+        if response.status_code == 409:
+            LOG.debug('access-list seq already present')
+            return response
+        elif not response.ok:
+            raise Exception('error creating access-list %s'
+                            'response.status_code: %s '
+                            'response.content: %s' %
+                            (seq, response.status_code, response.content))
+        return True
+
+    def get_access_list_seqs_ids(self, access_list_name):
+        s = requests.session()
+        url = ("http://{address}/rest/config/running/ip/access-list"
+               "/extended/{access_list_name}")
+        url = url.format(address=self.host, access_list_name=access_list_name)
+        response = s.get(url, auth=(self.username, self.password))
+        if response.status_code == 404:
+            return None
+        if not response.ok:
+            #return 'NOTFOUND: %s' % response
+            raise Exception("Error requesting url: '%s' code: '%s' reason: '%s' content: '%s'" %
+                            (url, response.status_code, response.reason, response.content))
+        tree = ET.fromstring(response.content)
+        seq_id_els = tree.findall('.//{*}seq-id')
+        seq_ids = [ ele.text for ele in seq_id_els ]
+        return seq_ids
+        
 
     def configure_l2_and_trunk_mode_for_interface(self, devices, lacp,
                                                   mtu, native_vlans):
@@ -843,7 +979,6 @@ class NOSdriver(object):
         data = '<enable>false</enable>'
         response = requests.post(url, auth=(self.username, self.password),
                                  data=data)
-        LOG.debug('ARSTARST: %s; %s' % (response.status_code, response))
         if response.ok or response.status_code==409:
             return response
         else:
@@ -857,7 +992,6 @@ class NOSdriver(object):
         data = '<arp><learn-any>true</learn-any></arp>'
         response = requests.put(url, auth=(self.username, self.password),
                                  data=data)
-        LOG.debug('add_learn_any: %s; %s' % (response.status_code, response))
         if response.ok or response.status_code==409:
             return response
         else:
@@ -871,7 +1005,6 @@ class NOSdriver(object):
         data = '<arp-aging-timeout>%s</arp-aging-timeout>' % arp_aging_timeout
         response = requests.put(url, auth=(self.username, self.password),
                                  data=data)
-        LOG.debug('set arp-aging-timeout: %s; %s' % (response.status_code, response))
         if response.ok:
             return response
         else:
@@ -885,7 +1018,6 @@ class NOSdriver(object):
         data = '<route-map><route-map-name>%s</route-map-name></route-map>' % route_map
         response = requests.patch(url, auth=(self.username, self.password),
                                  data=data)
-        LOG.debug('set ip route map: %s; %s' % (response.status_code, response))
         if response.ok:
             return response
         else:
@@ -899,7 +1031,6 @@ class NOSdriver(object):
         data = '<vrf><forwarding>%s</forwarding></vrf>' % vrf
         response = requests.put(url, auth=(self.username, self.password),
                                  data=data)
-        LOG.debug('ARSTARST: %s; %s' % (response.status_code, response))
         if response.ok or response.status_code==409:
             return response
         else:
@@ -964,7 +1095,6 @@ class NOSdriver(object):
 
     def create_vrf(self, rbridge_id, vrf_name):
         """create vrf on rbridge."""
-
         confstr = template.CREATE_VRF.format(rbridge_id=rbridge_id,
                                              vrf_name=vrf_name)
         self._edit_config('running', confstr)
@@ -1031,14 +1161,10 @@ class NOSdriver(object):
         self._edit_config(target='running', config=confstr)
 
     def add_arp_learn_any_to_vlan_interface(self, rbridge_id, vlan_id):
-        """add anycast ip address to a vlan interface."""
-
         confstr = template.ADD_ARP_LEARN_ANY_TO_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id)
         self._edit_config(target='running', config=confstr)
 
     def set_arp_aging_timeout_for_vlan_interface(self, rbridge_id, vlan_id, arp_aging_timeout):
-        """add anycast ip address to a vlan interface."""
-
         confstr = template.SET_ARP_AGING_TIMEOUT_FOR_SVI.format(rbridge_id=rbridge_id, vlan_id=vlan_id, arp_aging_timeout=arp_aging_timeout)
         self._edit_config(target='running', config=confstr)
     

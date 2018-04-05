@@ -31,7 +31,12 @@ from neutron_lib import context as neutron_context
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants as p_const
 from neutron.plugins.ml2 import driver_api as api
+from neutron.objects import subnet as subnet_obj
+from neutron.objects import network as network_obj
+from neutron.db import models_v2
+from neutron.db.models import segment as segment_models
 import sys
+
 try:
     from oslo_log import log as logging
 except ImportError:
@@ -52,186 +57,30 @@ class BrocadeMechanismCustom(api.MechanismDriver):
     def __init__(self):
         self.switches = utils.get_switches()
         self.username, self.password = utils.get_user_pw()
-        self.additional_export_vrf = utils.get_additional_export_vrf()
-        
+
         ml2_options = utils.get_brocade_ml2_conf()
         self.external_vrf_name = ml2_options.external_vrf_name
         self.external_vrf_vni = ml2_options.external_vrf_vni
         self.internal_vrf_name = ml2_options.internal_vrf_name
         self.internal_vrf_vni = ml2_options.internal_vrf_vni
-        self.external_collector_vrf_name = ml2_options.external_collector_vrf_name
-        self.internal_collector_vrf_name = ml2_options.internal_collector_vrf_name
+        self.tenants_acl_name = ml2_options.tenants_acl_name
+
         
-        self.fabric_driver = NOSFabricDriver(self.switches, self.username, self.password,
-                                             self.external_vrf_name, self.external_vrf_vni,
-                                             self.external_collector_vrf_name, self.internal_vrf_name,
-                                             self.internal_vrf_vni, self.internal_collector_vrf_name,
-                                             self.additional_export_vrf)
-        
-        #raise Exception('here')
-        #self._drivers = {}
-        #self.switches = []
-        #self._physical_networks = None
-        ##self._switch = None
-        #self._device_dict = {}
-        #self._bond_mappings = {}
-        #self._lacp_ports = {}
-        #self.initialize()
-        #self._username = None
-        #self._password = None
-        #self.additional_export_vrf = None
+        self.fabric_driver = NOSFabricDriver(ml2_options, self.switches)
+        #self.fabric_driver.init_global_vrfs()
 
     def initialize(self):
-        """Initilize of variables needed by this class."""
-        self.fabric_driver.init_global_vrfs()
-        #self.brocade_init()
-
-    def brocade_init(self):
-        """Brocade specific initialization for this class."""
-        utils.register_brocade_credentials()
-        self._username, self._password = utils.get_user_pw()
-        self._fqdn_supported = utils.is_fqdn_supported()
-        self.initialize_vcs = utils.get_vcs_initialize()
-        self.initialize_vcs = False
-        self._physical_networks = utils.get_physical_networks()
-        self.additional_export_vrf = utils.get_additional_export_vrf()
-        self.switches = utils.get_switches()
-        for switch_name, switch_config in self.switches.iteritems():
-            LOG.debug('Opening connection to %s' % switch_config['address'])
-            self._drivers[switch_name] = driver.NOSdriver(
-                                            switch_config['address'],
-                                            self._username,
-                                            self._password)
-
-        if False and self.initialize_vcs:
-            self.configure_vcs()
-        for switch_name, _driver in self._drivers.iteritems():
-            LOG.debug('CLosing connection to %s' % switch_config['address'])
-            _driver.close_session()
-
-    def configure_vcs(self):
-        # configure vcs interfaces based on topology
-        if not utils._is_valid_interface(self._device_dict,
-                                         self._switch, self._driver):
-            sys.exit(0)
-
-        LOG.debug("device dictionary %s", self._device_dict)
-
-        try:
-            if utils._is_lacp_enabled():
-                LOG.debug("LACP enabled")
-                (self._device_dict, self._lacp_ports) =\
-                    utils._aggregate_nics_to_support_lacp(self._device_dict,
-                                                          self._bond_mappings)
-            self._driver.configure_l2_and_trunk_mode_for_interface(
-                self._device_dict, self._lacp_ports,
-                self._mtu, self._native_vlans)
-        except Exception:
-            LOG.exception(
-                _LE("Brocade Mechanism: failed to put"
-                    " interface l2 or tr mode"))
-            raise Exception(
-                _("Brocade Mechanism: failed to put interface l2 or tr mode"))
-
+        pass
+        #self.fabric_driver.init_global_vrfs()
+        
     def is_flat_network(self, segment):
         if not segment or segment['network_type'] == p_const.TYPE_FLAT:
             LOG.info(_LI("Flat network nothing to be done"))
             return True
         return False
 
-    def _vrf_name(self, vlan_id):
-        return "os-vrf-%s" % vlan_id
-
-    def configure_network_on_switch(self, switch_name, vlan_id, vrf_name, rd, results, result_key):
-        try:
-            result_text = []
-            rbridge_results = [ True, True ]
-            results[result_key]['status'] = False
-            results[result_key]['text'] = ""
-            driver = self._drivers[switch_name]
-            for rbridge_id in [1,2]:
-                try:
-                    driver.create_vrf(rbridge_id, vrf_name)
-                    driver.configure_rd_for_vrf(rbridge_id, vrf_name, rd)
-                    driver.configure_vni_for_vrf(rbridge_id, vrf_name, vlan_id)
-                    driver.add_address_family_import_targets_for_vrf(rbridge_id, vrf_name, vlan_id)
-                    driver.add_address_family_export_targets_for_vrf(rbridge_id, vrf_name, vlan_id)
-                    if self.additional_export_vrf:
-                        driver.add_address_family_import_targets_for_vrf(
-                            rbridge_id,vrf_name,self.additional_export_vrf)
-                        driver.add_address_family_export_targets_for_vrf(
-                            rbridge_id,vrf_name,self.additional_export_vrf)
-                except Exception as e:
-                    rbridge_results[rbridge_id-1] = False
-                    result_text.append("error configuring vrf: %s switch: %s rbridge_id: %s rd: %s vlan_id: %s error: %s" %
-                                       (vrf_name, switch_name, rbridge_id, rd, vlan_id, e))
-                    try:
-                        driver.delete_vrf(rbridge_id, vrf_name)
-                        result_text.append("deleted vrf: %s switch: %s rbridge_id: %s" %
-                                       (vrf_name, switch_name, rbridge_id))
-                    except Exception:
-                        pass
-                try:
-                    driver.create_vlan_interface(vlan_id)
-                    driver.configure_svi(rbridge_id, vlan_id)
-                    driver.bind_vrf_to_svi(rbridge_id, vlan_id, vrf_name)
-                    driver.activate_svi(rbridge_id, vlan_id)
-                    driver.add_vrf_to_svi(rbridge_id, vlan_id, vrf_name)
-                    driver.add_arp_learn_any_to_vlan_interface(rbridge_id, vlan_id)
-                    driver.set_arp_aging_timeout_for_vlan_interface(rbridge_id, vlan_id, 4)
-                except Exception as e:
-                    rbridge_results[rbridge_id-1] = False
-                    result_text.append("error configuring vni: %s switch: %s rbridge_id: %s error: %s" %
-                                       (vlan_id, switch_name, rbridge_id, e))
-                    try:
-                        driver.delete_vlan_interface(vlan_id)
-                        driver.delete_vrf(rbridge_id, vrf_name)
-                    except Exception:
-                        pass
-                try:
-                    #result_text.append("1111111111111111111111")
-                    driver.add_vrf_to_bgp(rbridge_id, vrf_name)
-                    driver.set_rbridge_router_bgp_address_family_multipath_ebgp(rbridge_id, vrf_name)
-                    driver.set_rbridge_router_bgp_address_family_maximum_paths_ebgp(rbridge_id, vrf_name, 8)
-                    driver.set_rbridge_router_bgp_address_family_redistribute_connected(rbridge_id, vrf_name)
-                    #result_text.append("2222222222222222222222")
-                    #driver.add_multipath_ebgp_to_bgp_for_vrf(rbridge_id, vrf_name)
-                    #driver.add_vni_to_evpn_instance(rbridge_id, vlan_id, self.switches[switch_name]['evpn_instance']
-                except Exception as e:
-                    rbridge_results[rbridge_id-1] = False
-                    result_text.append("error configuring bgp for vrf: %s switch: %s rbridge_id: %s error: %s" %
-                                       (vrf_name, switch_name, rbridge_id, e))
-                    try:
-                        #driver.remove_vrf_from_bgp(rbridge_id, vlan_name)
-                        driver.delete_vrf(rbridge_id, vrf_name)
-                        driver.delete_vlan_interface(vlan_id)
-                        pass
-                    except Exception:
-                        pass
-                
-                # maybe deindent?
-                for port in self.switches[switch_name].port:
-                    try:
-                        port_speed = port.split(':')[1]
-                        port_name = port.split(':')[2]
-                        driver.add_or_remove_vlan_from_interface(
-                            "add", port_speed, port_name, vlan_id)
-                    except Exception as e:
-                        rbridge_results[0] = False
-                        rbridge_results[1] = False
-                        result_text.append("error adding tag: %s switch: %s port_name: %s error: %s" %
-                                           (vlan_id, switch_name, port_name, e))
-                results[result_key]['text'] = "; ".join(result_text)
-                results[result_key]['status'] = True in rbridge_results
-        except Exception as e:
-            results[result_key]['status'] = False
-            results[result_key]['text'] = "Error configuring network switch: %s vrf: %s vlan_id: %s error: %s" % (switch_name, vrf_name, vlan_id, e)
-            
     def create_network_precommit(self, mech_context):
-        #return
         LOG.debug("create_network_precommit: called")
-
-        """Create Network in the mechanism specific database table."""
         if self.is_flat_network(mech_context.network_segments[0]):
             return
 
@@ -262,195 +111,72 @@ class BrocadeMechanismCustom(api.MechanismDriver):
             raise Exception(
                 _("Brocade Mechanism: create_network_precommit failed"))
 
-    def create_network_postcommit(self, mech_context):
+    def create_network_postcommit(self, context):
         #return
-        """Create Network on the switch."""
-
         LOG.debug("create_network_postcommit: called")
-        LOG.debug("context: %s" % mech_context)
-        LOG.debug("network: %s" % mech_context.current)
-        if self.is_flat_network(mech_context.network_segments[0]):
-            return
-
-        network = mech_context.current
-        subnets = network['subnets']
-        LOG.debug("subnets: %s" % subnets)
-
-
-        context = mech_context._plugin_context
+        LOG.debug("context: %s" % context)
+        network = context.current
+        LOG.debug("network: %s" % context.current)
         network_id = network['id']
-        network_name = network['name']
-        network = brocade_db.get_network(context, network_id)
-        vlan_id = network['vlan']
-        segments = mech_context.network_segments
-        # currently supports only one segment per network
-        segment = segments[0]
-        physical_network = segment['physical_network']
+        provider_type = network['provider:network_type']
+        segmentation_id = network['provider:segmentation_id']
+        physnet = network['provider:physical_network']
         
         try:
             vrf_name = self.internal_vrf_name
-            collector_vrf_name = self.internal_collector_vrf_name
-            if '-pub-' in network_name:
+            if '-pub-' in network['name']:
                 vrf_name = self.external_vrf_name
-                collector_vrf_name = self.external_collector_vrf_name
-
-            self.fabric_driver.create_network(vlan_id, vrf_name, collector_vrf_name)
+            self.fabric_driver.create_network(segmentation_id, vrf_name, 'PBR')
         except Exception as ex:
-            LOG.exception(_LE("Brocade NOS driver: failed in create network, rollbacking: %s" % ex))
-            self.fabric_driver.delete_network(vlan_id, collector_vrf_name)
-            #results_d = dict((k,{'status': False, 'text': ''}) for k in self._drivers.keys())
-            #deconfigure_network_on_switch(switch_name, vrf_name, vlan_id, results_d, switch_name)
-            brocade_db.delete_network(context, network_id)
-            raise Exception(
-                _("Brocade Mechanism: create_network_postcommmit failed"))
+            LOG.exception("Error in create_network_postcommit")
+            raise ex
+        return True
 
-    def deconfigure_network_on_switch(self, switch_name, vrf_name, vlan_id, results, result_key):
-        try:
-            result_text = []
-            rbridge_results = [ True, True ]
-            results[result_key]['status'] = False
-            results[result_key]['text'] = ""
-            for rbridge_id in [1, 2]:
-                try:
-                    self._drivers[switch_name].delete_vrf(rbridge_id, vrf_name)
-                except Exception as e:
-                    result_text.append("Error deleting vrf: %s switch %s rbridge_id: %s" %
-                                       (vrf_name, switch_name, rbridge_id))
-                    rbridge_results[rbridge_id-1] = False
-                try:
-                    self._drivers[switch_name].remove_svi(rbridge_id, vlan_id)
-                except Exception as e:
-                    result_text.append("Error deleting svi: %s switch %s rbridge_id: %s" %
-                                       (vlan_id, switch_name, rbridge_id))
-                    rbridge_results[rbridge_id-1] = False
-            results[result_key]['text'] = "; ".join(result_text)
-            results[result_key]['status'] = True in rbridge_results
-        except Exception as e:
-            results[result_key]['status'] = False
-            results[result_key]['text'] = "Error deconfiguring network switch: %s vrf: %s vlan_id: %s : %s" % (switch_name, vrf_name, vlan_id, e)
-        
-
-    def delete_network_precommit(self, mech_context):
-        #return
-        """Delete Network from the plugin specific database table."""
-        LOG.debug("delete_network_precommit: called")
-        #raise Exception(mech_context.network_segments)
-        #if self.is_flat_network(mech_context.network_segments[0]):
-            #return
-        
-        #LOG.debug("_network: %s" % mech_context._network)
-        #LOG.debug("current: %s" % mech_context.current)
-        #LOG.debug("network_segments: %s" % mech_context.network_segments)
-        #LOG.debug(mech_context.original)
-        network = mech_context.current
-        network_id = network['id']
-        brocade_network = brocade_db.get_network(mech_context._plugin_context, network_id)
-        if not brocade_network:
-            LOG.debug('not deleting network: still not created')
-            return
-        vlan_id = brocade_network.vlan
-        context = mech_context._plugin_context
-        
-        collector_vrf_name = self.internal_collector_vrf_name
-        if '-pub-' in network['name']:
-            collector_vrf_name = self.external_collector_vrf_name
-        
-        try:
-            self.fabric_driver.delete_network(vlan_id, collector_vrf_name)
-            brocade_db.delete_network(context, network_id)
-        except Exception:
-            LOG.exception(
-                _LE("Brocade Mechanism: failed to delete network in db"))
-            raise Exception(_("Brocade Mechanism: delete_network_precommit failed"))
-        
-        #network = mech_context.current
-        #network_id = network['id']
-        #brocade_network = brocade_db.get_network(mech_context._plugin_context, network_id)
-        #if not brocade_network:
-            #LOG.debug("network %s not in brocade db, ignoring" % network_id)
-            #return
-        #vlan_id = brocade_network['vlan']
-        #vrf_name = self._vrf_name(vlan_id)
+    #def deconfigure_network_on_switch(self, switch_name, vrf_name, vlan_id, results, result_key):
         #try:
-            #threads = []
-            #results = dict((k,{}) for k in self._drivers.keys())
-            
-            #for switch_name, driver in self._drivers.iteritems():
-                #thread = Thread(target=self.deconfigure_network_on_switch,
-                                #args=[switch_name, vrf_name, vlan_id, results, switch_name])
-                #thread.start()
-                #threads.append(thread)
-            #for thread in threads:
-                #thread.join()
-            #result = not False in [result[1]['status'] for result in results.items()]
-            #result_text = "; ".join(["%s: %s" % 
-                            #(s, results[s]['text']) for s in results.keys()])
-            #if not result:
-                #error_switches = [ s for s in self.switches.keys() if not results[s]['status'] ]
-                #raise Exception("Error deleting network: %s" % result_text)
-            #LOG.info("deleted network, returned text: %s", result_text)
-            #brocade_db.delete_network(mech_context._plugin_context, network_id)
-            
-        #except Exception:
-            #LOG.exception(
-                #_LE("Brocade Mechanism: failed to delete network"))
-            #raise Exception(
-                #_("Brocade Mechanism: delete_network_precommit failed"))
+            #result_text = []
+            #rbridge_results = [ True, True ]
+            #results[result_key]['status'] = False
+            #results[result_key]['text'] = ""
+            #for rbridge_id in [1, 2]:
+                #try:
+                    #self._drivers[switch_name].delete_vrf(rbridge_id, vrf_name)
+                #except Exception as e:
+                    #result_text.append("Error deleting vrf: %s switch %s rbridge_id: %s" %
+                                       #(vrf_name, switch_name, rbridge_id))
+                    #rbridge_results[rbridge_id-1] = False
+                #try:
+                    #self._drivers[switch_name].remove_svi(rbridge_id, vlan_id)
+                #except Exception as e:
+                    #result_text.append("Error deleting svi: %s switch %s rbridge_id: %s" %
+                                       #(vlan_id, switch_name, rbridge_id))
+                    #rbridge_results[rbridge_id-1] = False
+            #results[result_key]['text'] = "; ".join(result_text)
+            #results[result_key]['status'] = True in rbridge_results
+        #except Exception as e:
+            #results[result_key]['status'] = False
+            #results[result_key]['text'] = "Error deconfiguring network switch: %s vrf: %s vlan_id: %s : %s" % (switch_name, vrf_name, vlan_id, e)
+        #return True
+        
 
-    def delete_network_postcommit(self, mech_context):
+    def delete_network_precommit(self, context):
+        network = context.current
+        provider_type = network['provider:network_type']
+        brocade_network = brocade_db.get_network(context._plugin_context, network['id'])
+        segmentation_id = brocade_network.vlan
+        vrf_name = self.internal_vrf_name
+        if '-pub-' in network['name']:
+            vrf_name = self.external_vrf_name
+        try:
+            self.fabric_driver.delete_network(segmentation_id)
+            brocade_db.delete_network(context._plugin_context, network['id'])
+        except Exception as ex:
+            LOG.exception("Error in create_network_postcommit.")
+            raise ex
+        return True
+
+    def delete_network_postcommit(self, context):
         return
-        """Delete network
-        from the switch.
-        """
-        LOG.debug("delete_network_postcommit: called")
-        #if self.is_flat_network(mech_context.network_segments[0]):
-            #return
-
-        network = mech_context._network
-        #LOG.debug(dir(mech_context._network))
-        #LOG.debug(mech_context._network.keys())
-        vlan_id = network['provider:segmentation_id']
-        
-        collector_vrf_name = self.internal_collector_vrf_name
-        if '-pub-' in network['name']:
-            collector_vrf_name = self.external_collector_vrf_name
-        try:
-            self.fabric_driver.delete_network(vlan_id, collector_vrf_name)
-        except Exception:
-            LOG.exception(_LE("Brocade NOS driver: failed to delete network"))
-            raise Exception(
-                _("Brocade switch exception, "
-                  "delete_network_postcommit failed"))
-        #LOG.debug("delete_network_postcommit: called")
-        #network = mech_context.current
-        #network_id = network['id']
-        #vlan_id = network['provider:segmentation_id']
-        ##vrf_name = self._vrf_name(vlan_id)
-        #try:
-            #vrf_name = self.internal_vrf_name
-            #collector_vrf_name = self.internal_collector_vrf_name
-            #if '-pub-' in network_name:
-                #vrf_name = self.external_vrf_name
-                #collector_vrf_name = self.external_collector_vrf_name
-
-            #self.fabric_driver.delete_network(vlan_id, vrf_name, collector_vrf_name)
-            ##for switch_name, _driver in self._drivers.iteritems():
-                ##LOG.debug("deleting vrf %s on switch %s (%s)" %
-                          ##(vrf_name, switch_name, self.switches[switch_name]['address']))
-                ##for rbridge_id in [1,2]:
-                    ##LOG.debug('rbridge_id: %s' % rbridge_id)
-                    ##LOG.debug('vrf_name: %s' % vrf_name)
-                    ##LOG.debug('vlan_id: %s' % vlan_id)
-                    ##LOG.debug('vlan_id: %s' % vlan_id)
-                    ##_driver.delete_vrf(rbridge_id, vrf_name)
-                    #_driver.remove_svi(rbridge_id, vlan_id)
-                #LOG.debug("deleted vrf %s on switch %s" %
-                      #(vrf_name, switch_name))
-        #except Exception:
-            #LOG.exception(_LE("Brocade NOS driver: failed to delete network"))
-            #raise Exception(
-                #_("Brocade switch exception, "
-                  #"delete_network_postcommit failed"))
 
     def update_network_precommit(self, mech_context):
         """Noop now, it is left here for future."""
@@ -460,166 +186,136 @@ class BrocadeMechanismCustom(api.MechanismDriver):
 
     def create_port_precommit(self, mech_context):
         return
-        """Create logical port on the switch (db update)."""
-        LOG.debug("create_port_precommit: called")
-        if self.is_flat_network(mech_context.network.network_segments[0]):
-            return
-
-        port = mech_context.current
-        if not self._is_compute_or_dhcp_port(port, mech_context):
-            return
-        if baremetal_util.is_baremetal_deploy(port):
-            LOG.debug("create_port_precommit: baremetal deploy")
-            return
-        context = neutron_context.get_admin_context()
-        self._create_brocade_port(
-            context, port, mech_context.top_bound_segment)
-
+        
     def create_port_postcommit(self, mech_context):
         return
-        """Associate the port to the network."""
-        LOG.debug("create_port_postcommit(self: called")
-        if self.is_flat_network(mech_context.network.network_segments[0]):
-            return
-
-        port = mech_context.current
-        if not self._is_compute_or_dhcp_port(port, mech_context):
-            return
-        context = mech_context._plugin_context
-        self._create_nos_port(context, port, mech_context.top_bound_segment)
-
+        
     def delete_port_precommit(self, mech_context):
         return
-        """Delete logical port on the switch (db update)."""
-
-        LOG.debug("delete_port_precommit: called")
-        if self.is_flat_network(mech_context.network.network_segments[0]):
-            return
-
-        port = mech_context.current
-        if not self._is_compute_or_dhcp_port(port, mech_context):
-            return
-
-        context = mech_context._plugin_context
-        self._delete_brocade_port(context, port)
-
+        
     def delete_port_postcommit(self, mech_context):
         return
-        """Dissociate port from the network."""
-        LOG.debug("delete_port_postcommit(self: called")
-        if self.is_flat_network(mech_context.network.network_segments[0]):
-            return
-
-        port = mech_context.current
-        if not self._is_compute_or_dhcp_port(port, mech_context):
-            return
-
-        context = mech_context._plugin_context
-        self._delete_nos_port(context, port, mech_context.top_bound_segment)
-
+        
     def update_port_precommit(self, mech_context):
         return
-        """updates brocade db if vm is migrating"""
-        if self.is_flat_network(mech_context.network.network_segments[0]):
-            return
-
-        context = mech_context._plugin_context
-        port = mech_context.current
-        LOG.debug("update_port_precommit(self: called")
-        if not self._is_compute_or_dhcp_port(port, mech_context):
-            return
-
-        if self._is_vm_migration(mech_context):
-            # PortContext.current['binding:host_id']: current (new) value
-            port = mech_context.original
-            LOG.debug("update_port_precommit: VM is migrating to"
-                      "new host %s(case 1) port['status'] %s",
-                      port[portbindings.HOST_ID], port['status'])
-            self._delete_brocade_port(context, port)
-        else:
-            # PortContext.current['binding:host_id']: previous value
-            if mech_context.top_bound_segment and\
-                    port['status'] == n_const.PORT_STATUS_BUILD:
-                LOG.debug("update_port_pretcommit: VM is migrating to"
-                          "new host %s(case 2)", port[portbindings.HOST_ID])
-                self._create_brocade_port(context, port,
-                                          mech_context.top_bound_segment)
-
+        
     def update_port_postcommit(self, mech_context):
         return
-        """updates brocade nos if vm is migrating"""
-        if self.is_flat_network(mech_context.network.network_segments[0]):
-            return
 
-        port = mech_context.current
-        context = mech_context._plugin_context
-        LOG.debug("update_port_postcommit: called")
-        if not self._is_compute_or_dhcp_port(port, mech_context):
-            return
-
-        if self._is_vm_migration(mech_context):
-            # add new entry to switch
-            # PortContext.current['binding:host_id']: current (new) value
-            port = mech_context.original
-            LOG.debug("update_port_precommit: VM is migrating to"
-                      "new host %s(case 1) port['status'] %s",
-                      port[portbindings.HOST_ID], port['status'])
-            self._delete_nos_port(context, port,
-                                  mech_context.original_bound_segment)
-        else:
-            # remove previouse port binings
-            # PortContext.current['binding:host_id']: previous value
-            if mech_context.top_bound_segment and\
-                    port['status'] == n_const.PORT_STATUS_BUILD:
-                LOG.debug("update_port_postcommit: VM is migrating to"
-                          "new host %s(case 2)", port[portbindings.HOST_ID])
-                self._create_nos_port(context, port,
-                                      mech_context.top_bound_segment)
-
+    def get_project_access_list_seqs(self, project_id):
+        import neutron.db.api as db
+        session = db.get_reader_session()
+        project_subnets = []
+        project_networks = []
+        subnet_model = models_v2.Subnet
+        network_model = models_v2.Network
+        segment_model = segment_models.NetworkSegment
+        with session.begin():
+            project_subnets = (session.query(subnet_model)
+                .filter(subnet_model.project_id == project_id)).all()
+            project_networks = (session.query(network_model)
+                .filter(network_model.project_id == project_id)).all()
+            #project_networks = (session.query(network_model,segment_model)
+                #.filter(network_model.project_id == project_id)
+                #.join(segment_model)
+                #.filter(network_model.id == segment_model.network_id)
+                #).all()
+        required_seqs = []
+        for src_net in project_networks:
+            for dst_net in project_networks:
+                if src_net['id']==dst_net['id']:
+                    continue
+                
+                if len(src_net.segments) == 0:
+                    LOG.info('No segments found for network %s. '
+                             'This is normal if the network '
+                             'is being deleted' % src_net.id)
+                    continue
+                src_seg_id = src_net.segments[0].segmentation_id
+                if len(dst_net.segments) == 0:
+                    LOG.info('No segments found for network %s. '
+                             'This is normal if the network '
+                             'is being deleted' % dst_net.id)
+                    continue
+                dst_seg_id = dst_net.segments[0].segmentation_id
+                
+                src_subnets = [ s for s in project_subnets if str(s.network_id) == str(src_net.id)]
+                if len(src_subnets) == 0:
+                    LOG.warn('No subnet found for src network %s. '
+                             'This is normal if the subnet '
+                             'is being deleted' % src_net.id)
+                    continue
+                src_subnet = src_subnets[0]
+                
+                dst_subnets = [ s for s in project_subnets if str(s.network_id) == str(dst_net.id)]
+                if len(dst_subnets) == 0:
+                    LOG.warn('No subnet found for src network %s. '
+                             'This is normal if the subnet '
+                             'is being deleted' % dst_net.id)
+                    continue
+                dst_subnet = dst_subnets[0]
+                
+                data = {}
+                data['id'] = '1%04d%04d' % (src_seg_id,
+                                             dst_seg_id)
+                dst_cidr = str(dst_subnet.cidr)
+                data['dst_cidr'] = dst_cidr
+                data['dst_address'] = dst_cidr.split('/')[0]
+                data['dst_wildcard_mask'] = '.'.join([str(255 - (0xffffffff << (32 - int(dst_cidr.split('/')[1])) >> i) & 0xff)
+                                               for i in [24, 16, 8, 0]])
+                data['src_vlan'] = src_seg_id
+                required_seqs.append(data)
+        #LOG.debug('UU: %s' % required_seqs)
+        return required_seqs
+    
     def create_subnet_precommit(self, mech_context):
-        """Noop now, it is left here for future."""
         LOG.debug("create_subnetwork_precommit: called")
-        
-
+        network = mech_context.network._network
+        network_subnets = subnet_obj.Subnet.get_objects(mech_context._plugin_context,
+                                                        network_id=network['id'])
+        if len(network_subnets) > 1:
+            raise Exception('Too many subnets')
+    
     def create_subnet_postcommit(self, mech_context):
         """Noop now, it is left here for future."""
-        LOG.debug("create_subnetwork_postcommit: called")
-        
+        LOG.debug("create_subnet_postcommit: called")
         network = mech_context.network._network
         subnet = mech_context.current
         vlan_id = brocade_db.get_network(mech_context._plugin_context,
                                          subnet['network_id'])['vlan']
-        #vrf_name = self._vrf_name(vlan_id)
+
+        required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
+        LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
+        ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
+        LOG.debug('refreshed acls, returned: %s' % ret)
+        
         gateway_ip = subnet['gateway_ip']
-        gateway_subnet = subnet['cidr'].split('/')[1]
+        gateway_subnet = str(subnet['cidr']).split('/')[1]
         gateway_address= "%s/%s" % (gateway_ip, gateway_subnet)
         try:
             network_name = network['name']
-            #vrf_name = self.internal_vrf_name
-            #collector_vrf_name = self.internal_collector_vrf_name
+            vrf_name = self.internal_vrf_name
             if '-pub-' in network_name:
                 vrf_name = self.external_vrf_name
-                collector_vrf_name = self.external_collector_vrf_name
             self.fabric_driver.create_subnet(vlan_id, gateway_address)
-            #for switch_name, _driver in self._drivers.iteritems():
-                #LOG.debug("deleting vrf %s on switch %s (%s)" %
-                          #(vrf_name, switch_name, self.switches[switch_name]['address']))
-                #for rbridge_id in [1,2]:
-                    #_driver.configure_svi_with_ip_address_anycast(rbridge_id, vlan_id, gateway_address)
-        except Exception:
-            LOG.exception(_LE("Brocade NOS driver: failed to create subnet"))
-            raise Exception(
-                _("Brocade switch exception, "
-                  "delete_network_postcommit failed"))
-
-        
+        except Exception as ex:
+            LOG.exception('Error creating subnet: %s' % repr(ex))
+            raise ex
 
     def delete_subnet_precommit(self, mech_context):
-        LOG.debug("delete_subnetwork_precommit: called")
+        return
+
+    def delete_subnet_postcommit(self, mech_context):
+        LOG.debug("delete_subnet_precommit: called")
         subnet = mech_context.current
-        
         vlan_id = brocade_db.get_network(mech_context._plugin_context,
                                          subnet['network_id'])['vlan']
+        
+        required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
+        LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
+        ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
+        LOG.debug('refreshed acls, returned: %s' % ret)
+        
         gateway_ip = subnet['gateway_ip']
         gateway_subnet = subnet['cidr'].split('/')[1]
         gateway_address= "%s/%s" % (gateway_ip, gateway_subnet)
@@ -627,15 +323,8 @@ class BrocadeMechanismCustom(api.MechanismDriver):
         try:
             self.fabric_driver.delete_subnet(vlan_id, gateway_address)
         except Exception:
-            LOG.exception(_LE("Brocade NOS driver: failed to create subnet"))
-            raise Exception(
-                _("Brocade switch exception, "
-                  "delete_network_postcommit failed"))
-
-
-    def delete_subnet_postcommit(self, mech_context):
-        """Noop now, it is left here for future."""
-        LOG.debug("delete_subnetwork_postcommit: called")
+            LOG.exception('Error deleting subnet: %s' % repr(ex))
+            raise ex
 
     def update_subnet_precommit(self, mech_context):
         """Noop now, it is left here for future."""
