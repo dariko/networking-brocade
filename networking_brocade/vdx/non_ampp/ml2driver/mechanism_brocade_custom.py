@@ -290,7 +290,7 @@ class BrocadeMechanismCustom(api.MechanismDriver):
             LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
             ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
             LOG.debug('refreshed acls, returned: %s' % ret)
-        else
+        else:
             LOG.debug('tenants_acl_name unset, skipping acl refresh')
 
         gateway_ip = subnet['gateway_ip']
