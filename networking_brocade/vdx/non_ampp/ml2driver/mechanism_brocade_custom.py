@@ -285,10 +285,14 @@ class BrocadeMechanismCustom(api.MechanismDriver):
                                          subnet['network_id'])['vlan']
 
         required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
-        LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
-        ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
-        LOG.debug('refreshed acls, returned: %s' % ret)
         
+        if self.tenants_acl_name:
+            LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
+            ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
+            LOG.debug('refreshed acls, returned: %s' % ret)
+        else
+            LOG.debug('tenants_acl_name unset, skipping acl refresh')
+
         gateway_ip = subnet['gateway_ip']
         gateway_subnet = str(subnet['cidr']).split('/')[1]
         gateway_address= "%s/%s" % (gateway_ip, gateway_subnet)
@@ -312,10 +316,14 @@ class BrocadeMechanismCustom(api.MechanismDriver):
                                          subnet['network_id'])['vlan']
         
         required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
-        LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
-        ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
-        LOG.debug('refreshed acls, returned: %s' % ret)
-        
+
+        if self.tenants_acl_name:
+            LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
+            ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
+            LOG.debug('refreshed acls, returned: %s' % ret)
+        else:
+            LOG.debug('tenants_acl_name unset, skipping acl refresh')
+
         gateway_ip = subnet['gateway_ip']
         gateway_subnet = subnet['cidr'].split('/')[1]
         gateway_address= "%s/%s" % (gateway_ip, gateway_subnet)
