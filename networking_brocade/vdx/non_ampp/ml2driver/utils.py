@@ -43,7 +43,7 @@ DEFAULT_RBRIDGE_RANGE = []
 
 VCS_OPTS = [cfg.MultiStrOpt('port', default=''),
             cfg.StrOpt('address', default=''),
-            cfg.StrOpt('is_border', default=''),
+            cfg.BoolOpt('is_border'),
             cfg.StrOpt('evpn_instance', default=''),
             cfg.ListOpt('rbridge_rd_prefixes')]
 
