@@ -144,7 +144,7 @@ class VirtualCluster(object):
         
         LOG.debug('deconfigured network, vlan_id %s' % vlan_id)
 
-    def create_network(self, vlan_id, target_vrf, route_map):
+    def create_network(self, vlan_id, target_vrf, route_map=None):
         LOG.debug('configuring network for vlan %s, forwarding to vrf %s, route_map %s' % (vlan_id, target_vrf, route_map))
         
         self.connect(force=True)
@@ -168,8 +168,9 @@ class VirtualCluster(object):
             LOG.debug('ip arp learn-any, ret: %s' % ret)
             ret = self.exec_on_rbridges('set_ip_arp_agint_timeout_for_svi', vlan_id=vlan_id, arp_aging_timeout=8)
             LOG.debug('ip arp-aging-timeout, ret: %s' % ret)
-            ret = self.exec_on_rbridges('set_ip_policy_route_map_for_svi', vlan_id=vlan_id, route_map=route_map)
-            LOG.debug('ip policy route-map, ret: %s' % ret)
+            if route_map:
+                ret = self.exec_on_rbridges('set_ip_policy_route_map_for_svi', vlan_id=vlan_id, route_map=route_map)
+                LOG.debug('ip policy route-map, ret: %s' % ret)
         ret = self.exec_on_rbridges('add_rbridge_router_evpn_instance_vnis', vni=vlan_id)
         LOG.debug('add_rbridge_router_evpn_instance_vnis, ret: %s' % ret)
         
@@ -334,7 +335,7 @@ class NOSFabricDriver(object):
         LOG.debug('Refreshed acls, results:' % results)
         return results
 
-    def create_network(self, vlan_id, target_vrf, route_map):
+    def create_network(self, vlan_id, target_vrf, route_map=None):
         results = { vcs: None for vcs in self.clusters.keys() }
         executor = ThreadPoolExecutor(max_workers=20)
         for k, vcs in self.clusters.iteritems():

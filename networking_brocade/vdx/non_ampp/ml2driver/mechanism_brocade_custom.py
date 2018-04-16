@@ -126,7 +126,7 @@ class BrocadeMechanismCustom(api.MechanismDriver):
             vrf_name = self.internal_vrf_name
             if '-pub-' in network['name']:
                 vrf_name = self.external_vrf_name
-            self.fabric_driver.create_network(segmentation_id, vrf_name, 'PBR')
+            self.fabric_driver.create_network(segmentation_id, vrf_name)
         except Exception as ex:
             LOG.exception("Error in create_network_postcommit")
             raise ex
