@@ -315,12 +315,8 @@ class VdxCluster(object):
         session = self.driver.get_session()
         self.driver.vlan_interface_create(vlan_id, session=session)
         self.driver.vlan_interface_suppress_arp(vlan_id, session=session)
-        #for port in self.ports:
-            #port_speed = port.split(':')[1]
-            #port_name = port.split(':')[2]
-            #self.driver.trunk_add_remove_vlan('add', port_speed, port_name, vlan_id, session=session)
         ret = self.add_tag_to_ports(vlan_id, session=session)
-        LOG.debug('Trunked vlan to ports, results: %s' % ret)
+        LOG.debug('Trunked vlan %s on %s, results: %s' % (vlan_id, self.name, ret))
         for rbridge in self.rbridges:
             if not self.is_border:
                 self.driver.ve_interface_create(rbridge.rid, vlan_id, session=session)
@@ -343,7 +339,7 @@ class VdxCluster(object):
                                             'add', port_speed, port_name,
                                             vlan_id, session)
         executor.shutdown()
-        results = [ r.result() for k, r in results.iteritems() ]
+        results = {k: r.result() for k, r in results.iteritems() }
         
     
     def delete_network(self, vlan_id, skip_errors=True):
