@@ -283,10 +283,9 @@ class BrocadeMechanismCustom(api.MechanismDriver):
         vlan_id = brocade_db.get_network(mech_context._plugin_context,
                                          subnet['network_id'])['vlan']
 
-        required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
-        
         if self.tenants_acl_name:
             LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
+            required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
             ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
             LOG.debug('refreshed acls, returned: %s' % ret)
         else:
@@ -314,10 +313,9 @@ class BrocadeMechanismCustom(api.MechanismDriver):
         vlan_id = brocade_db.get_network(mech_context._plugin_context,
                                          subnet['network_id'])['vlan']
         
-        required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
-
         if self.tenants_acl_name:
             LOG.debug('refreshing acl, required_seqs: %s' % required_seqs)
+            required_seqs = self.get_project_access_list_seqs(subnet['project_id'])
             ret = self.fabric_driver.refresh_acl(self.tenants_acl_name, required_seqs)
             LOG.debug('refreshed acls, returned: %s' % ret)
         else:
