@@ -278,19 +278,21 @@ class VdxCluster(object):
         #return True
     
     def create_subnet(self, vlan_id, gateway):
-        for rbridge in self.rbridges:
-            self.driver.ve_add_address_anycast(rbridge.rid, vlan_id, gateway)
+        if not self.is_border:
+            for rbridge in self.rbridges:
+                self.driver.ve_add_address_anycast(rbridge.rid, vlan_id, gateway)
         return True
     
     def delete_subnet(self, vlan_id, gateway, skip_errors=True):
-        for rbridge in self.rbridges:
-            try:
-                self.driver.ve_remove_address_anycast(rbridge.rid, vlan_id, gateway)
-            except Exception as ex:
-                if not skip_errors:
-                    raise ex                
-                else:
-                    LOG.info("Ignoring error %s, skip_error==true" % ex)
+        if not self.is_border:
+            for rbridge in self.rbridges:
+                try:
+                    self.driver.ve_remove_address_anycast(rbridge.rid, vlan_id, gateway)
+                except Exception as ex:
+                    if not skip_errors:
+                        raise ex                
+                    else:
+                        LOG.info("Ignoring error %s, skip_error==true" % ex)
         return True
 
     def create_network(self, vlan_id, target_vrf, route_map=None):
