@@ -26,19 +26,15 @@ class VdxRESTDriver(object):
         self.password = password
         self.base_url = 'http://%s/rest/config/running' % self.address
 
-    def requests_retry_session(
-        retries=3,
-        backoff_factor=0.3,
-        session=None):
-
+    def requests_retry_session(self, session=None):
         session = session or requests.Session()
         retry = Retry(
-            total=5,
-            read=5,
-            connect=5,
+            total=10,
+            read=10,
+            connect=10,
             status_forcelist=(502,503,504),
             method_whitelist=frozenset(['GET','POST','PUT','PATCH','DELETE']),
-            backoff_factor=2)
+            backoff_factor=1)
         adapter = requests.adapters.HTTPAdapter(max_retries=retry)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
