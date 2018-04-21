@@ -23,8 +23,7 @@ from networking_brocade._i18n import _LE
 from networking_brocade._i18n import _LI
 from networking_brocade.vdx.bare_metal import util as baremetal_util
 from networking_brocade.vdx.db import models as brocade_db
-from networking_brocade.vdx.non_ampp.ml2driver.nos import nosdriver as driver
-from networking_brocade.vdx.non_ampp.ml2driver.nos.nosfabricdriver import NOSFabricDriver
+from networking_brocade.vdx.non_ampp.ml2driver.nos.vdxrestdriver import VdxRESTFabricDriverDriver
 from networking_brocade.vdx.non_ampp.ml2driver import utils
 from neutron.common import constants as n_const
 from neutron_lib import context as neutron_context
@@ -66,7 +65,7 @@ class BrocadeMechanismCustom(api.MechanismDriver):
         self.tenants_acl_name = ml2_options.tenants_acl_name
 
         
-        self.fabric_driver = NOSFabricDriver(ml2_options, self.switches)
+        self.fabric_driver = VdxRESTFabricDriverDriver(ml2_options, self.switches)
         #self.fabric_driver.init_global_vrfs()
 
     def initialize(self):
