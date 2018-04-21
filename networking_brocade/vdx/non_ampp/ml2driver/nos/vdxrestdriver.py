@@ -2,6 +2,7 @@ from oslo_log import log as logging
 from concurrent.futures import ThreadPoolExecutor
 import lxml.etree as ET
 import requests
+from requests.packages.urllib3.util.retry import Retry
 
 from oslo_log import log as logging
 LOG = logging.getLogger(__name__)
@@ -25,8 +26,27 @@ class VdxRESTDriver(object):
         self.password = password
         self.base_url = 'http://%s/rest/config/running' % self.address
 
+    def requests_retry_session(
+        retries=3,
+        backoff_factor=0.3,
+        session=None):
+
+        session = session or requests.Session()
+        retry = Retry(
+            total=5,
+            read=5,
+            connect=5,
+            status_forcelist=(502,503,504),
+            method_whitelist=frozenset(['GET','POST','PUT','PATCH','DELETE']),
+            backoff_factor=2)
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        return session
+
     def get_session(self):
         session = requests.Session()
+        session = self.requests_retry_session(session)
         session.auth = (self.username, self.password)
         return session
     
